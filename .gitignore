@@ -1,0 +1,180 @@
+# ==========================================
+# Credentials and Secrets
+# ==========================================
+# Never commit credentials or API keys!
+*.credentials.json
+**/appsettings.secrets.json
+appsettings.Production.json
+appsettings.Staging.json
+
+# Web.config with sensitive data
+# Uncomment to exclude Web.config completely:
+Web.*config
+web.*config*
+
+# Connection strings backup
+*.connectionstrings.config
+
+# ==========================================
+# Visual Studio
+# ==========================================
+.vs/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+*.userprefs
+
+# ==========================================
+# Build Results
+# ==========================================
+[Dd]ebug/
+[Dd]ebugPublic/
+[Rr]elease/
+[Rr]eleases/
+x64/
+x86/
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+bld/
+
+# MSTest test Results
+[Tt]est[Rr]esult*/
+[Bb]uild[Ll]og.*
+
+# ==========================================
+# NuGet Packages
+# ==========================================
+*.nupkg
+**/packages/*
+!**/packages/build/
+!**/packages/repositories.config
+*.nuget.props
+*.nuget.targets
+project.lock.json
+project.fragment.lock.json
+artifacts/
+
+# ==========================================
+# ASP.NET Scaffolding
+# ==========================================
+ScaffoldingReadMe.txt
+
+# ==========================================
+# Files built by Visual Studio
+# ==========================================
+*_i.c
+*_p.c
+*_h.h
+*.ilk
+*.meta
+*.obj
+*.iobj
+*.pch
+*.pdb
+*.ipdb
+*.pgc
+*.pgd
+*.rsp
+*.sbr
+*.tlb
+*.tli
+*.tlh
+*.tmp
+*.tmp_proj
+*_wpftmp.csproj
+*.log
+*.vspscc
+*.vssscc
+.builds
+*.pidb
+*.svclog
+*.scc
+
+# ==========================================
+# Visual Studio Profiler
+# ==========================================
+*.psess
+*.vsp
+*.vspx
+*.sap
+
+# ==========================================
+# ReSharper
+# ==========================================
+_ReSharper*/
+*.[Rr]e[Ss]harper
+*.DotSettings.user
+
+# ==========================================
+# JetBrains Rider
+# ==========================================
+.idea/
+*.sln.iml
+
+# ==========================================
+# .NET Core
+# ==========================================
+project.lock.json
+project.fragment.lock.json
+artifacts/
+
+# StyleCop
+StyleCopReport.xml
+
+# ==========================================
+# NCrunch
+# ==========================================
+_NCrunch_*
+.*crunch*.local.xml
+nCrunchTemp_*
+
+# ==========================================
+# Windows
+# ==========================================
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.cab
+*.msi
+*.msm
+*.msp
+*.lnk
+
+# ==========================================
+# Backup & Temp Files
+# ==========================================
+*.bak
+*.cache
+*.swp
+*~
+*.orig
+
+# ==========================================
+# Database Files
+# ==========================================
+*.mdf
+*.ldf
+*.ndf
+*.bacpac
+
+# ==========================================
+# Publishing Profiles
+# ==========================================
+PublishProfiles/
+*.pubxml
+*.azurePubxml
+*.publishproj
+
+# ==========================================
+# Azure & Cloud
+# ==========================================
+*.azurewebsites.net.pubxml
+FunctionsDebugProfiles/
+
+# ==========================================
+# Application Insights
+# ==========================================
+ApplicationInsights.config
