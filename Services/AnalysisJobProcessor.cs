@@ -52,6 +52,11 @@ namespace PostProcessingServer.Services
         public void Start()
         {
             HostingEnvironment.RegisterObject(this);
+            
+            // Load incomplete jobs from database before starting processing
+            int loadedJobCount = _jobQueue.LoadIncompleteJobsFromDatabase();
+            System.Diagnostics.Trace.WriteLine($"AnalysisJobProcessor starting with {loadedJobCount} jobs loaded from database");
+            
             _processingTask = Task.Run(() => ProcessJobsAsync(_cancellationTokenSource.Token));
         }
 
@@ -347,6 +352,9 @@ namespace PostProcessingServer.Services
             simulacra.PresetLocationQAndA = simulacra.generateQandAFromLocationAndEventNameMappings(nonEmptyLocationTiles, logControl.Now);
 
             //await UpdateNotificationsTask.ConfigureAwait(false);
+            Dictionary<string, CalendarEvent> allScheduleData = calEvents.GroupBy(o => o.Id).ToDictionary(g => g.Key, g => g.First());
+            Dictionary<string, TilerElements.Location> locationCache = res.GroupBy(o => o.Id).ToDictionary(g => g.Key, g => g.First());
+            await logControl.populateScheduleDump(locationCache, allScheduleData, requestLocation).ConfigureAwait(false);
             await logControl.Commit(calEvents, null, "0", null, logControl.Now, null, requestLocation).ConfigureAwait(false);
         }
 
@@ -459,6 +467,7 @@ namespace PostProcessingServer.Services
                 // Create database context for this job
                 using (var db = new TilerFront.Models.ApplicationDbContext())
                 {
+                    db.setAsReadOnly();
                     // Load the VibeRequest with all necessary includes
                     var vibeRequest = await db.VibeRequests
                         .Include(o => o.TilerUser)
@@ -608,6 +617,36 @@ namespace PostProcessingServer.Services
                     
                     db.Users.AddOrUpdate(tilerUser);
                     dump = await schedule.CreateScheduleDump(currentLocation).ConfigureAwait(false);
+                    var now = Utility.now();
+                    if (dump?.XmlDoc != null)
+                    {
+                        var bigDataControl = new BigDataTiler.BigDataLogControl();
+                        var log = new BigDataTiler.LogChange
+                        {
+                            UserId = job.TilerUserId,
+                            TimeOfCreation = now,
+                            JsTimeOfCreation = (ulong)now.ToUnixTimeMilliseconds(),
+                            TypeOfEvent = (UserActivity.ActivityType.Preview).ToString()   
+                        };
+                        log.UpdateTrigger(BigDataTiler.TriggerType.preview);
+                        log.Id = log.GenerateId();
+                        log.loadXmlFile(dump.XmlDoc);
+                        await bigDataControl.AddLogDocument(log).ConfigureAwait(false);
+
+                        using (var writeDb = new TilerFront.Models.ApplicationDbContext())
+                        {
+                            var vibePreview = new TilerElements.VibePreview
+                            {
+                                VibeRequestId = vibeRequest.Id,
+                                ScheduleDumpId = log.Id,
+                                CreationTimeInMs = now.ToUnixTimeMilliseconds(),
+                                TilerUserId = job.TilerUserId
+                            };
+                            vibePreview.Id = vibePreview.GenerateId();
+                            writeDb.VibePreviews.Add(vibePreview);
+                            await writeDb.SaveChangesAsync().ConfigureAwait(false);
+                        }
+                    }
 
                     // Update job status with success
                     string result = Newtonsoft.Json.JsonConvert.SerializeObject(new
@@ -619,7 +658,7 @@ namespace PostProcessingServer.Services
                         vibeRequestId = vibeRequestId,
                         beforeScheduleId = beforeScheduleId,
                         afterScheduleId = afterScheduleId,
-                        completedAt = Utility.now()
+                        completedAt = now
                     });
 
                     _jobQueue.UpdateJobStatus(job.JobId, AnalysisJobStatus.Completed, resultData: result);

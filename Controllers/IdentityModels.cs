@@ -25,6 +25,27 @@ namespace PostProcessingServer.Models
         {
         }
 
+        /// <summary>
+        /// DbSet for tracking analysis jobs in the database
+        /// </summary>
+        public virtual DbSet<AnalysisJob> AnalysisJobs { get; set; }
+
+        protected override void OnModelCreating(DbModelBuilder modelBuilder)
+        {
+            base.OnModelCreating(modelBuilder);
+
+            // Configure AnalysisJob entity
+            modelBuilder.Entity<AnalysisJob>()
+                .HasKey(j => j.JobId);
+
+            // Configure foreign key relationship with no cascade delete
+            modelBuilder.Entity<AnalysisJob>()
+                .HasRequired(j => j.TilerUser)
+                .WithMany()
+                .HasForeignKey(j => j.TilerUserId)
+                .WillCascadeOnDelete(false);
+        }
+
         public static PostProcessorApplicationDbContext Create()
         {
             return new PostProcessorApplicationDbContext();

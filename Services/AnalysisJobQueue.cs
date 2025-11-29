@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Data.Entity;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -18,6 +19,8 @@ namespace PostProcessingServer.Services
         private readonly ConcurrentQueue<AnalysisJob> _queue = new ConcurrentQueue<AnalysisJob>();
         private readonly ConcurrentDictionary<string, AnalysisJob> _activeJobs = new ConcurrentDictionary<string, AnalysisJob>();
         private readonly SemaphoreSlim _signal = new SemaphoreSlim(0);
+        private bool _isInitialized = false;
+        private readonly object _initLock = new object();
 
         public static AnalysisJobQueue Instance => _instance.Value;
 
@@ -28,6 +31,81 @@ namespace PostProcessingServer.Services
         public int QueueDepth => _queue.Count;
         public int ActiveJobCount => _activeJobs.Count;
 
+        /// <summary>
+        /// Loads incomplete jobs from the database and re-queues them for processing
+        /// This should be called on application startup to resume interrupted jobs
+        /// </summary>
+        public int LoadIncompleteJobsFromDatabase()
+        {
+            lock (_initLock)
+            {
+                if (_isInitialized)
+                {
+                    System.Diagnostics.Trace.WriteLine("AnalysisJobQueue already initialized, skipping database load");
+                    return 0;
+                }
+
+                int loadedCount = 0;
+                try
+                {
+                    using (var db = new PostProcessingServer.Models.PostProcessorApplicationDbContext())
+                    {
+                        // Find jobs that were queued or processing when the server shut down
+                        var incompleteJobs = db.AnalysisJobs
+                            .Where(j => j.Status == AnalysisJobStatus.Queued || 
+                                       j.Status == AnalysisJobStatus.Processing)
+                            .OrderBy(j => j.CreatedAt)
+                            .ToList();
+
+                        foreach (var job in incompleteJobs)
+                        {
+                            // Reset processing jobs back to queued
+                            if (job.Status == AnalysisJobStatus.Processing)
+                            {
+                                job.Status = AnalysisJobStatus.Queued;
+                                job.StartedAt = null;
+                            }
+
+                            // Add to in-memory queue
+                            _queue.Enqueue(job);
+                            _activeJobs.TryAdd(job.JobId, job);
+                            _signal.Release();
+                            loadedCount++;
+                        }
+
+                        // Update all processing jobs in database to queued
+                        var processingJobs = db.AnalysisJobs
+                            .Where(j => j.Status == AnalysisJobStatus.Processing)
+                            .ToList();
+
+                        foreach (var job in processingJobs)
+                        {
+                            job.Status = AnalysisJobStatus.Queued;
+                            job.StartedAt = null;
+                        }
+
+                        if (processingJobs.Any())
+                        {
+                            db.SaveChanges();
+                        }
+
+                        System.Diagnostics.Trace.WriteLine($"Loaded {loadedCount} incomplete jobs from database");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Trace.TraceError($"Failed to load incomplete jobs from database: {ex.Message}\n{ex.StackTrace}");
+                }
+
+                _isInitialized = true;
+                return loadedCount;
+            }
+        }
+
+        /// <summary>
+        /// Enqueues a job for processing
+        /// </summary>
+        /// <param name="job">The job to enqueue</param>
         public void Enqueue(AnalysisJob job)
         {
             if (job == null)
@@ -39,6 +117,22 @@ namespace PostProcessingServer.Services
             job.Status = AnalysisJobStatus.Queued;
             _queue.Enqueue(job);
             _activeJobs.TryAdd(job.JobId, job);
+            
+            // Persist to database
+            try
+            {
+                using (var db = new PostProcessingServer.Models.PostProcessorApplicationDbContext())
+                {
+                    db.AnalysisJobs.Add(job);
+                    db.SaveChanges();
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Trace.TraceError($"Failed to persist new job {job.JobId}: {ex.Message}");
+            }
+            
+            // Signal that a new item is available
             _signal.Release();
         }
 
@@ -61,10 +155,41 @@ namespace PostProcessingServer.Services
             if (string.IsNullOrWhiteSpace(jobId))
                 return null;
 
-            _activeJobs.TryGetValue(jobId, out AnalysisJob job);
-            return job;
+            // First check in-memory cache
+            if (_activeJobs.TryGetValue(jobId, out AnalysisJob job))
+            {
+                return job;
+            }
+
+            // If not in memory, try loading from database
+            try
+            {
+                using (var db = new PostProcessingServer.Models.PostProcessorApplicationDbContext())
+                {
+                    var dbJob = db.AnalysisJobs.Find(jobId);
+                    if (dbJob != null)
+                    {
+                        // Add to in-memory cache for future lookups
+                        _activeJobs.TryAdd(jobId, dbJob);
+                        return dbJob;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Trace.TraceError($"Failed to load job {jobId} from database: {ex.Message}");
+            }
+
+            return null;
         }
 
+        /// <summary>
+        /// Updates the status of a job
+        /// </summary>
+        /// <param name="jobId">The job ID</param>
+        /// <param name="status">The new status</param>
+        /// <param name="resultData">Optional result data</param>
+        /// <param name="errorMessage">Optional error message</param>
         public void UpdateJobStatus(string jobId, AnalysisJobStatus status, string resultData = null, string errorMessage = null)
         {
             if (_activeJobs.TryGetValue(jobId, out AnalysisJob job))
@@ -90,6 +215,36 @@ namespace PostProcessingServer.Services
                 {
                     job.ErrorMessage = errorMessage;
                 }
+
+                // Persist changes to database
+                try
+                {
+                    using (var db = new PostProcessingServer.Models.PostProcessorApplicationDbContext())
+                    {
+                        var existingJob = db.AnalysisJobs.Find(jobId);
+                        if (existingJob != null)
+                        {
+                            // Update existing job
+                            existingJob.Status = job.Status;
+                            existingJob.CompletedAt = job.CompletedAt;
+                            existingJob.ProcessingDurationMs = job.ProcessingDurationMs;
+                            existingJob.ResultData = job.ResultData;
+                            existingJob.ErrorMessage = job.ErrorMessage;
+                            existingJob.StartedAt = job.StartedAt;
+                        }
+                        else
+                        {
+                            // Add new job if it doesn't exist
+                            db.AnalysisJobs.Add(job);
+                        }
+                        
+                        db.SaveChanges();
+                    }
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Trace.TraceError($"Failed to persist job status update for {jobId}: {ex.Message}");
+                }
             }
         }
 
@@ -106,11 +261,36 @@ namespace PostProcessingServer.Services
                 .ToList();
 
             int removedCount = 0;
+            
+            // Remove from in-memory collections
             foreach (var jobId in jobsToRemove)
             {
                 if (_activeJobs.TryRemove(jobId, out _))
                 {
                     removedCount++;
+                }
+            }
+
+            // Remove from database
+            if (jobsToRemove.Any())
+            {
+                try
+                {
+                    using (var db = new PostProcessingServer.Models.PostProcessorApplicationDbContext())
+                    {
+                        var dbJobsToRemove = db.AnalysisJobs
+                            .Where(j => jobsToRemove.Contains(j.JobId))
+                            .ToList();
+
+                        db.AnalysisJobs.RemoveRange(dbJobsToRemove);
+                        db.SaveChanges();
+                        
+                        System.Diagnostics.Trace.WriteLine($"Removed {dbJobsToRemove.Count} old jobs from database");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Trace.TraceError($"Failed to remove old jobs from database: {ex.Message}");
                 }
             }
 

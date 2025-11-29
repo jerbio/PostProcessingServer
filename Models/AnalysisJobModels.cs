@@ -43,15 +43,19 @@ namespace PostProcessingServer.Models
         public string JobId { get; set; }
 
         [Required]
+        [Index("IX_AnalysisJob_TilerUserId", 1)]
         public string TilerUserId { get; set; }
+        
         [ForeignKey("TilerUserId")]
         public TilerUser TilerUser { get; set; }
 
-
         [Required]
+        [Index("IX_AnalysisJob_JobType", 1)]
         public AnalysisJobType JobType { get; set; }
 
         [Required]
+        [Index("IX_AnalysisJob_Status", 1)]
+        [Index("IX_AnalysisJob_Status_CreatedAt", 1)]
         public AnalysisJobStatus Status { get; set; }
 
         public string RequestData { get; set; }
@@ -60,10 +64,15 @@ namespace PostProcessingServer.Models
         public int RetryCount { get; set; }
 
         [Required]
+        [Index("IX_AnalysisJob_CreatedAt", 1)]
+        [Index("IX_AnalysisJob_Status_CreatedAt", 2)]
         public DateTimeOffset CreatedAt { get; set; }
 
         public DateTimeOffset? StartedAt { get; set; }
+        
+        [Index("IX_AnalysisJob_CompletedAt", 1)]
         public DateTimeOffset? CompletedAt { get; set; }
+        
         public DateTimeOffset? ExpiresAt { get; set; }
         public long? ProcessingDurationMs { get; set; }
 
@@ -71,8 +80,8 @@ namespace PostProcessingServer.Models
         {
             JobId = Ulid.NewUlid().ToString();
             Status = AnalysisJobStatus.Queued;
-            CreatedAt = DateTimeOffset.UtcNow;
-            ExpiresAt = DateTimeOffset.UtcNow.AddDays(7);
+            CreatedAt = Utility.now();
+            ExpiresAt = Utility.now().AddDays(7);
             RetryCount = 0;
         }
     }
