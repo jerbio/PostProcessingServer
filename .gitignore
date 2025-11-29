@@ -38,6 +38,7 @@ x86/
 [Oo]bj/
 [Ll]og/
 bld/
+LLM_README/
 
 # MSTest test Results
 [Tt]est[Rr]esult*/

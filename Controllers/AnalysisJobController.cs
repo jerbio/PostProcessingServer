@@ -54,7 +54,7 @@ namespace PostProcessingServer.Controllers
             {
                 var job = new AnalysisJob
                 {
-                    UserId = request.UserId,
+                    TilerUserId = request.UserId,
                     JobType = AnalysisJobType.Suggestion,
                     RequestData = request.RequestData,
                     Status = AnalysisJobStatus.Queued,
@@ -90,8 +90,44 @@ namespace PostProcessingServer.Controllers
             {
                 var job = new AnalysisJob
                 {
-                    UserId = request.UserId,
+                    TilerUserId = request.UserId,
                     JobType = AnalysisJobType.ScheduleAnalysis,
+                    RequestData = request.RequestData,
+                    Status = AnalysisJobStatus.Queued,
+                    CreatedAt = DateTimeOffset.UtcNow
+                };
+
+                _jobQueue.Enqueue(job);
+
+                var response = AnalysisJobResponse.CreateSuccess(job.JobId);
+                return Ok(response);
+            }
+            catch (Exception ex)
+            {
+                return Ok(AnalysisJobResponse.CreateError($"Failed to queue job: {ex.Message}"));
+            }
+        }
+
+        /// <summary>
+        /// Submit a ProcessRequest preview job for a VibeRequest
+        /// </summary>
+        [HttpPost]
+        [Route("processrequest")]
+        [ServerAuthentication]
+        [ResponseType(typeof(AnalysisJobResponse))]
+        public async Task<IHttpActionResult> SubmitProcessRequestJob([FromBody] AnalysisJobRequest request)
+        {
+            if (request == null || !ModelState.IsValid)
+            {
+                return BadRequest(ModelState);
+            }
+
+            try
+            {
+                var job = new AnalysisJob
+                {
+                    TilerUserId = request.UserId,
+                    JobType = AnalysisJobType.ProcessRequest,
                     RequestData = request.RequestData,
                     Status = AnalysisJobStatus.Queued,
                     CreatedAt = DateTimeOffset.UtcNow

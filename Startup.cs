@@ -1,7 +1,7 @@
 ﻿using Microsoft.Owin;
 using Owin;
 
-[assembly: OwinStartupAttribute(typeof(PostProcessingServer.Startup))]
+//[assembly: OwinStartupAttribute(typeof(PostProcessingServer.Startup))]
 namespace PostProcessingServer
 {
     public partial class Startup

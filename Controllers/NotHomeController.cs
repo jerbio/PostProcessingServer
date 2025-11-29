@@ -6,7 +6,7 @@ using System.Web.Mvc;
 
 namespace PostProcessingServer.Controllers
 {
-    public class HomeController : Controller
+    public class NotHomeController : Controller
     {
         public ActionResult Index()
         {

@@ -28,7 +28,8 @@ namespace PostProcessingServer.Models
     {
         Suggestion = 0,
         ScheduleAnalysis = 1,
-        TimelineSummary = 2
+        TimelineSummary = 2,
+        ProcessRequest = 3
     }
 
     /// <summary>
@@ -56,7 +57,6 @@ namespace PostProcessingServer.Models
         public string RequestData { get; set; }
         public string ResultData { get; set; }
         public string ErrorMessage { get; set; }
-        public string UserId { get; set; }
         public int RetryCount { get; set; }
 
         [Required]

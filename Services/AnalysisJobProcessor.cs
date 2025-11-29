@@ -12,6 +12,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Web.Hosting;
 using TilerElements;
+using TilerFront;
 //using TilerFront;
 //using TilerFront.Controllers;
 //using TilerFront.Models;
@@ -134,6 +135,10 @@ namespace PostProcessingServer.Services
                         await ProcessScheduleAnalysisAsync(job, cancellationToken).ConfigureAwait(false);
                         break;
 
+                    case AnalysisJobType.ProcessRequest:
+                        await ProcessRequestPreviewAsync(job, cancellationToken).ConfigureAwait(false);
+                        break;
+
                     default:
                         throw new NotSupportedException($"Job type {job.JobType} is not supported");
                 }
@@ -163,17 +168,65 @@ namespace PostProcessingServer.Services
 
         /// <summary>
         /// Processes a suggestion analysis job
-        /// TODO: Implement actual analysis logic from TilerFront.AnalysisController.SuggestionAnalysis
         /// </summary>
         private async Task ProcessSuggestionAnalysisAsync(AnalysisJob job, CancellationToken cancellationToken)
         {
-            // Placeholder implementation
-            // In the next step, we'll move the actual SuggestionAnalysis logic here
-            
-            await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken).ConfigureAwait(false);
-            
-            string result = $"{{\"status\": \"success\", \"jobId\": \"{job.JobId}\", \"type\": \"suggestion\"}}";
-            _jobQueue.UpdateJobStatus(job.JobId, AnalysisJobStatus.Completed, resultData: result);
+            try
+            {
+                // Deserialize the request data
+                var requestData = Newtonsoft.Json.JsonConvert.DeserializeObject<TilerFront.Models.LocationEnabledUserRequest>(job.RequestData);
+                
+                if (requestData == null)
+                {
+                    throw new ArgumentException("Invalid request data for suggestion analysis job");
+                }
+
+                // Create database context for this job
+                using (var db = new TilerFront.Models.ApplicationDbContext())
+                {
+                    // Get the TilerUser from the job
+                    var tilerUser = db.Users.Find(job.TilerUserId);
+                    
+                    if (tilerUser == null)
+                    {
+                        throw new InvalidOperationException($"TilerUser not found: {job.TilerUserId}");
+                    }
+
+                    // Initialize LogControl similar to PersonaController
+                    var logControl = new TilerFront.LogControl(tilerUser, db);
+                    
+                    // Get the request location
+                    TilerElements.Location requestLocation = requestData.getCurrentLocation();
+                    
+                    if (requestLocation == null || !requestLocation.isNotNullAndNotDefault)
+                    {
+                        requestLocation = TilerElements.Utility.defaultLLMLookupLocation.CreateCopy();
+                        requestLocation.IsVerified = true;
+                    }
+
+                    // Call the actual SuggestionAnalysis method
+                    await SuggestionAnalysis(logControl, requestLocation, db).ConfigureAwait(false);
+
+                    // Update job status with success
+                    string result = Newtonsoft.Json.JsonConvert.SerializeObject(new
+                    {
+                        status = "success",
+                        jobId = job.JobId,
+                        type = "suggestion",
+                        userId = job.TilerUserId,
+                        completedAt = DateTimeOffset.UtcNow
+                    });
+                    
+                    _jobQueue.UpdateJobStatus(job.JobId, AnalysisJobStatus.Completed, resultData: result);
+                    
+                    System.Diagnostics.Trace.WriteLine($"Suggestion analysis completed for job {job.JobId}, user {job.TilerUserId}");
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Trace.TraceError($"Error in ProcessSuggestionAnalysisAsync for job {job.JobId}: {ex.Message}\n{ex.StackTrace}");
+                throw; // Re-throw to be handled by ProcessJobAsync retry logic
+            }
         }
 
         private async Task SuggestionAnalysis(TilerFront.LogControl logControl, TilerElements.Location requestLocation, TilerFront.Models.ApplicationDbContext db)
@@ -322,17 +375,263 @@ namespace PostProcessingServer.Services
 
         /// <summary>
         /// Processes a schedule analysis job
-        /// TODO: Implement actual analysis logic from TilerFront.AnalysisController.SuggestionAnalysis
         /// </summary>
         private async Task ProcessScheduleAnalysisAsync(AnalysisJob job, CancellationToken cancellationToken)
         {
-            // Placeholder implementation
-            // In the next step, we'll move the actual SuggestionAnalysis logic here
-            
-            await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken).ConfigureAwait(false);
-            
-            string result = $"{{\"status\": \"success\", \"jobId\": \"{job.JobId}\", \"type\": \"scheduleAnalysis\"}}";
-            _jobQueue.UpdateJobStatus(job.JobId, AnalysisJobStatus.Completed, resultData: result);
+            try
+            {
+                // Deserialize the request data
+                var requestData = Newtonsoft.Json.JsonConvert.DeserializeObject<TilerFront.Models.LocationEnabledUserRequest>(job.RequestData);
+                
+                if (requestData == null)
+                {
+                    throw new ArgumentException("Invalid request data for schedule analysis job");
+                }
+
+                // Create database context for this job
+                using (var db = new TilerFront.Models.ApplicationDbContext())
+                {
+                    // Get the TilerUser from the job
+                    var tilerUser = await db.Users.Include(o=>o.ScheduleProfile_DB)
+                        .FirstOrDefaultAsync(o=> o.Id == job.TilerUserId)
+                        .ConfigureAwait(false);
+                    
+                    if (tilerUser == null)
+                    {
+                        throw new InvalidOperationException($"TilerUser not found: {job.TilerUserId}");
+                    }
+
+                    // Initialize LogControl
+                    var logControl = new TilerFront.LogControlDirect(tilerUser, db);
+                    
+                    // Get the request location
+                    TilerElements.Location requestLocation = requestData.getCurrentLocation();
+                    
+                    if (requestLocation == null || !requestLocation.isNotNullAndNotDefault)
+                    {
+                        requestLocation = TilerElements.Utility.defaultLLMLookupLocation.CreateCopy();
+                        requestLocation.IsVerified = true;
+                    }
+
+                    // Call the SuggestionAnalysis method (it handles both suggestion and schedule analysis)
+                    await SuggestionAnalysis(logControl, requestLocation, db).ConfigureAwait(false);
+
+                    // Update job status with success
+                    string result = Newtonsoft.Json.JsonConvert.SerializeObject(new
+                    {
+                        status = "success",
+                        jobId = job.JobId,
+                        type = "scheduleAnalysis",
+                        userId = job.TilerUserId,
+                        completedAt = DateTimeOffset.UtcNow
+                    });
+                    
+                    _jobQueue.UpdateJobStatus(job.JobId, AnalysisJobStatus.Completed, resultData: result);
+                    
+                    System.Diagnostics.Trace.WriteLine($"Schedule analysis completed for job {job.JobId}, user {job.TilerUserId}");
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Trace.TraceError($"Error in ProcessScheduleAnalysisAsync for job {job.JobId}: {ex.Message}\n{ex.StackTrace}");
+                throw; // Re-throw to be handled by ProcessJobAsync retry logic
+            }
+        }
+
+        /// <summary>
+        /// Processes a VibeRequest ProcessRequest job - generates preview by running ProcessRequest
+        /// </summary>
+        private async Task ProcessRequestPreviewAsync(AnalysisJob job, CancellationToken cancellationToken)
+        {
+            try
+            {
+                // Parse the request data - expecting a JSON with VibeRequestId and ExecuteVibeModel data
+                var requestDataJson = Newtonsoft.Json.Linq.JObject.Parse(job.RequestData);
+                string vibeRequestId = requestDataJson["VibeRequestId"]?.ToString();
+                var executeVibeData = requestDataJson["ExecuteVibeData"]?.ToObject<TilerFront.Models.ExecuteVibeModel>();
+
+                if (string.IsNullOrWhiteSpace(vibeRequestId))
+                {
+                    throw new ArgumentException("Invalid request data for ProcessRequest job: VibeRequestId is required");
+                }
+
+                ScheduleDump dump = null;
+                // Create database context for this job
+                using (var db = new TilerFront.Models.ApplicationDbContext())
+                {
+                    // Load the VibeRequest with all necessary includes
+                    var vibeRequest = await db.VibeRequests
+                        .Include(o => o.TilerUser)
+                        .Include(o => o.TilerUser.VibeProfile_DB)
+                        .Include(o => o.TilerUser.WorkHoursRestrictionProfile_DB)
+                        .Include(o => o.TilerUser.PersonalHoursRestrictionProfile_DB)
+                        .Include(o => o.VibeSession)
+                        .Include(o => o.TilerUser.ScheduleProfile_DB)
+                        .Where(o => o.Id == vibeRequestId && o.TilerUserId == job.TilerUserId)
+                        .FirstOrDefaultAsync()
+                        .ConfigureAwait(false);
+
+                    if (vibeRequest == null)
+                    {
+                        throw new InvalidOperationException($"VibeRequest not found: {vibeRequestId} for user {job.TilerUserId}");
+                    }
+
+                    var tilerUser = vibeRequest.TilerUser;
+
+                    // Load all actions for this VibeRequest
+                    List<TilerElements.VibeAction> preEmittedActions = await db.VibeActions
+                        .Where(o => o.VibeRequestId == vibeRequest.Id && o.TilerUser.IsAnonymous_DB == true)
+                        .Include(o => o.VibeRequest.VibeSession.TilerUser)
+                        .Include(o => o.VibeRequest.VibeSession.TilerUser.VibeProfile_DB)
+                        .ToListAsync()
+                        .ConfigureAwait(false);
+                    
+                    vibeRequest.Actions = preEmittedActions;
+
+                    // Get timezone and location
+                    var currentTime = executeVibeData != null ? executeVibeData.getRefNow() : DateTimeOffset.UtcNow;
+                    if (executeVibeData != null && executeVibeData.TimeZone.isNot_NullEmptyOrWhiteSpace())
+                    {
+                        tilerUser.updateTimeZone(executeVibeData.TimeZone);
+                    }
+
+                    // Initialize ReferenceNow and UserAccount
+                    TilerElements.ReferenceNow referenceNow = tilerUser.generateReferenceNow(currentTime);
+                    string tilerUserId = tilerUser.Id;
+                    TilerFront.UserAccount userAccount = new TilerFront.UserAccountDirect(
+                        tilerUserId, 
+                        db, 
+                        new TilerFront.LogControlDirect(vibeRequest.TilerUser, db, 1));
+                    
+                    System.Collections.Generic.HashSet<string> calIds = new System.Collections.Generic.HashSet<string>();
+
+                    // Process actions to extract calendar IDs and locations
+                    System.Collections.Generic.List<TilerElements.Location> newlyCreatedLocations = new System.Collections.Generic.List<TilerElements.Location>();
+                    foreach (var eachAction in preEmittedActions)
+                    {
+                        if (eachAction.FunctionResult != null)
+                        {
+                            var tilerIds = eachAction.FunctionResult.TilerIds;
+                            if (tilerIds != null)
+                            {
+                                calIds = new System.Collections.Generic.HashSet<string>(calIds.Concat(tilerIds));
+                            }
+                        }
+
+                        // Handle location updates
+                        if (eachAction.FunctionResult != null ||
+                            eachAction.Action == TilerElements.VibeQuery.VibeActionOptions.Update_Home_address ||
+                            eachAction.Action == TilerElements.VibeQuery.VibeActionOptions.Update_Work_address)
+                        {
+                            string locationAddress = eachAction.FunctionResult?.LocationAddress?.Trim();
+                            string locationAddressDescription = eachAction.FunctionResult?.LocationName?.Trim();
+
+                            if (eachAction.Action == TilerElements.VibeQuery.VibeActionOptions.Update_Home_address)
+                            {
+                                locationAddress = eachAction.FunctionResult?.getByJsonKey("address")?.ToString().Trim();
+                                locationAddressDescription = TilerElements.Location.HOMEDESCRIPTOR;
+                            }
+                            else if (eachAction.Action == TilerElements.VibeQuery.VibeActionOptions.Update_Work_address)
+                            {
+                                locationAddress = eachAction.FunctionResult?.getByJsonKey("address")?.ToString().Trim();
+                                locationAddressDescription = TilerElements.Location.WORKDESCRIPTOR;
+                            }
+
+                            if (locationAddress.isNot_NullEmptyOrWhiteSpace() && locationAddressDescription.isNot_NullEmptyOrWhiteSpace())
+                            {
+                                var upsertResult = await LogControl.upsertLocation(
+                                    db,
+                                    tilerUser,
+                                    locationAddressDescription,
+                                    locationAddress
+                                    )
+                                    .ConfigureAwait(false);
+                                if (upsertResult != null)
+                                {
+                                    newlyCreatedLocations.Add(upsertResult.Item1);
+                                }
+                            }
+                        }
+                    }
+
+                    string beforeScheduleId = tilerUser.ScheduleProfile.EvaluationUpdateId;
+
+                    // Create DB_Schedule
+                    var dataRetrievalSet = TilerElements.DataRetrievalSet.scheduleManipulation;
+                    TilerFront.DB_Schedule schedule = new TilerFront.DB_Schedule(
+                        userAccount, 
+                        referenceNow.constNow, 
+                        tilerUser.EndOfDay,
+                        TilerElements.Location.getDefaultLocation(), 
+                        dataRetrievalSet, 
+                        calendarIds: calIds);
+                    
+                    TilerElements.Location currentLocation = executeVibeData != null 
+                        ? executeVibeData.getCurrentLocation() 
+                        : null;
+                    
+                    foreach (var eachUpsertedLocation in newlyCreatedLocations)
+                    {
+                        await schedule.addLocation(eachUpsertedLocation).ConfigureAwait(false);
+                    }
+                    
+                    if (currentLocation == null || !currentLocation.isNotNullAndNotDefault)
+                    {
+                        currentLocation = TilerElements.Utility.defaultLLMLookupLocation.CreateCopy();
+                        currentLocation.IsVerified = true;
+                    }
+                    
+                    schedule.SetCurrentLocation(currentLocation);
+
+                    // Get default persona locations
+                    var defaultPersonaHomeLocation = tilerUser.ScheduleProfile?.HomeLocation_DB;
+                    var defaultPersonaWorkLocation = tilerUser.ScheduleProfile?.WorkLocation_DB;
+
+                    if (defaultPersonaHomeLocation != null && !schedule.Locations.ContainsKey(defaultPersonaHomeLocation.Description.ToLower()))
+                    {
+                        schedule.Locations.Add(defaultPersonaHomeLocation.Description.ToLower(), defaultPersonaHomeLocation);
+                    }
+                    if (defaultPersonaWorkLocation != null && !schedule.Locations.ContainsKey(defaultPersonaWorkLocation.Description.ToLower()))
+                    {
+                        schedule.Locations.Add(defaultPersonaWorkLocation.Description.ToLower(), defaultPersonaWorkLocation);
+                    }
+
+                    // Create ScheduleService and process the request
+                    VibeServiceCore.ScheduleService scheduleService = new VibeServiceCore.ScheduleService(vibeRequest.VibeSession, schedule);
+                    await scheduleService.ProcessRequest(vibeRequest, schedule).ConfigureAwait(false);
+
+                    string afterScheduleId = tilerUser.ScheduleProfile.EvaluationUpdateId;
+
+                    // Update VibeRequest with before/after schedule IDs
+                    vibeRequest.BeforeScheduleId = beforeScheduleId;
+                    vibeRequest.AfterScheduleId = afterScheduleId;
+                    
+                    db.Users.AddOrUpdate(tilerUser);
+                    dump = await schedule.CreateScheduleDump(currentLocation).ConfigureAwait(false);
+
+                    // Update job status with success
+                    string result = Newtonsoft.Json.JsonConvert.SerializeObject(new
+                    {
+                        status = "success",
+                        jobId = job.JobId,
+                        type = "processRequest",
+                        userId = job.TilerUserId,
+                        vibeRequestId = vibeRequestId,
+                        beforeScheduleId = beforeScheduleId,
+                        afterScheduleId = afterScheduleId,
+                        completedAt = Utility.now()
+                    });
+
+                    _jobQueue.UpdateJobStatus(job.JobId, AnalysisJobStatus.Completed, resultData: result);
+
+                    System.Diagnostics.Trace.WriteLine($"ProcessRequest preview completed for job {job.JobId}, VibeRequest {vibeRequestId}, user {job.TilerUserId}");
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Trace.TraceError($"Error in ProcessRequestPreviewAsync for job {job.JobId}: {ex.Message}\n{ex.StackTrace}");
+                throw; // Re-throw to be handled by ProcessJobAsync retry logic
+            }
         }
 
         /// <summary>

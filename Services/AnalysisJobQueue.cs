@@ -5,6 +5,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using PostProcessingServer.Models;
+using TilerElements;
 
 namespace PostProcessingServer.Services
 {
@@ -48,7 +49,7 @@ namespace PostProcessingServer.Services
             if (_queue.TryDequeue(out AnalysisJob job))
             {
                 job.Status = AnalysisJobStatus.Processing;
-                job.StartedAt = DateTimeOffset.UtcNow;
+                job.StartedAt = Utility.now();
                 return job;
             }
 
@@ -72,7 +73,7 @@ namespace PostProcessingServer.Services
                 
                 if (status == AnalysisJobStatus.Completed || status == AnalysisJobStatus.Failed || status == AnalysisJobStatus.Cancelled)
                 {
-                    job.CompletedAt = DateTimeOffset.UtcNow;
+                    job.CompletedAt = Utility.now();
                     
                     if (job.StartedAt.HasValue)
                     {
@@ -94,7 +95,7 @@ namespace PostProcessingServer.Services
 
         public int CleanupOldJobs(TimeSpan maxAge)
         {
-            var cutoffTime = DateTimeOffset.UtcNow - maxAge;
+            var cutoffTime = Utility.now() - maxAge;
             var jobsToRemove = _activeJobs.Values
                 .Where(j => (j.Status == AnalysisJobStatus.Completed || 
                             j.Status == AnalysisJobStatus.Failed || 
