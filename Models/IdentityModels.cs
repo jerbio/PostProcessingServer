@@ -18,16 +18,37 @@ namespace PostProcessingServer.Models
         }
     }
 
-    public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
+    public class PostProcessorApplicationDbContext : TilerElements.TilerDbContext
     {
-        public ApplicationDbContext()
-            : base("DefaultConnection", throwIfV1Schema: false)
+        public PostProcessorApplicationDbContext()
+            : base("DefaultConnection")
         {
         }
 
-        public static ApplicationDbContext Create()
+        /// <summary>
+        /// DbSet for tracking analysis jobs in the database
+        /// </summary>
+        public virtual DbSet<AnalysisJob> AnalysisJobs { get; set; }
+
+        protected override void OnModelCreating(DbModelBuilder modelBuilder)
         {
-            return new ApplicationDbContext();
+            base.OnModelCreating(modelBuilder);
+
+            // Configure AnalysisJob entity
+            modelBuilder.Entity<AnalysisJob>()
+                .HasKey(j => j.Id);
+
+            // Configure foreign key relationship with no cascade delete
+            modelBuilder.Entity<AnalysisJob>()
+                .HasRequired(j => j.TilerUser)
+                .WithMany()
+                .HasForeignKey(j => j.TilerUserId)
+                .WillCascadeOnDelete(false);
+        }
+
+        public static PostProcessorApplicationDbContext Create()
+        {
+            return new PostProcessorApplicationDbContext();
         }
     }
 }

@@ -13,11 +13,7 @@ using System.Threading.Tasks;
 using System.Web.Hosting;
 using TilerElements;
 using TilerFront;
-//using TilerFront;
-//using TilerFront.Controllers;
-//using TilerFront.Models;
-//using AnalysisJobStatus = PostProcessingServer.Models.AnalysisJobStatus;
-//using AnalysisJobType = PostProcessingServer.Models.AnalysisJobType;
+using TilerCrossServerResources;
 
 namespace PostProcessingServer.Services
 {
@@ -125,7 +121,7 @@ namespace PostProcessingServer.Services
         /// </summary>
         private async Task ProcessJobAsync(AnalysisJob job, CancellationToken cancellationToken)
         {
-            System.Diagnostics.Trace.WriteLine($"Processing job {job.JobId} of type {job.JobType}");
+            System.Diagnostics.Trace.WriteLine($"Processing job {job.Id} of type {job.JobType}");
 
             try
             {
@@ -148,12 +144,12 @@ namespace PostProcessingServer.Services
                         throw new NotSupportedException($"Job type {job.JobType} is not supported");
                 }
 
-                _jobQueue.UpdateJobStatus(job.JobId, AnalysisJobStatus.Completed);
-                System.Diagnostics.Trace.WriteLine($"Job {job.JobId} completed successfully");
+                _jobQueue.UpdateJobStatus(job.Id, AnalysisJobStatus.Completed);
+                System.Diagnostics.Trace.WriteLine($"Job {job.Id} completed successfully");
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Trace.WriteLine($"Job {job.JobId} failed: {ex.Message}");
+                System.Diagnostics.Trace.WriteLine($"Job {job.Id} failed: {ex.Message}");
                 
                 // Retry logic
                 if (job.RetryCount < 3)
@@ -161,11 +157,11 @@ namespace PostProcessingServer.Services
                     job.RetryCount++;
                     job.Status = AnalysisJobStatus.Queued;
                     _jobQueue.Enqueue(job);
-                    System.Diagnostics.Trace.WriteLine($"Job {job.JobId} requeued for retry {job.RetryCount}");
+                    System.Diagnostics.Trace.WriteLine($"Job {job.Id} requeued for retry {job.RetryCount}");
                 }
                 else
                 {
-                    _jobQueue.UpdateJobStatus(job.JobId, AnalysisJobStatus.Failed, 
+                    _jobQueue.UpdateJobStatus(job.Id, AnalysisJobStatus.Failed, 
                         errorMessage: $"Failed after {job.RetryCount} retries: {ex.Message}");
                 }
             }
@@ -216,20 +212,20 @@ namespace PostProcessingServer.Services
                     string result = Newtonsoft.Json.JsonConvert.SerializeObject(new
                     {
                         status = "success",
-                        jobId = job.JobId,
+                        jobId = job.Id,
                         type = "suggestion",
                         userId = job.TilerUserId,
                         completedAt = DateTimeOffset.UtcNow
                     });
                     
-                    _jobQueue.UpdateJobStatus(job.JobId, AnalysisJobStatus.Completed, resultData: result);
+                    _jobQueue.UpdateJobStatus(job.Id, AnalysisJobStatus.Completed, resultData: result);
                     
-                    System.Diagnostics.Trace.WriteLine($"Suggestion analysis completed for job {job.JobId}, user {job.TilerUserId}");
+                    System.Diagnostics.Trace.WriteLine($"Suggestion analysis completed for job {job.Id}, user {job.TilerUserId}");
                 }
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Trace.TraceError($"Error in ProcessSuggestionAnalysisAsync for job {job.JobId}: {ex.Message}\n{ex.StackTrace}");
+                System.Diagnostics.Trace.TraceError($"Error in ProcessSuggestionAnalysisAsync for job {job.Id}: {ex.Message}\n{ex.StackTrace}");
                 throw; // Re-throw to be handled by ProcessJobAsync retry logic
             }
         }
@@ -428,20 +424,20 @@ namespace PostProcessingServer.Services
                     string result = Newtonsoft.Json.JsonConvert.SerializeObject(new
                     {
                         status = "success",
-                        jobId = job.JobId,
+                        jobId = job.Id,
                         type = "scheduleAnalysis",
                         userId = job.TilerUserId,
                         completedAt = DateTimeOffset.UtcNow
                     });
                     
-                    _jobQueue.UpdateJobStatus(job.JobId, AnalysisJobStatus.Completed, resultData: result);
+                    _jobQueue.UpdateJobStatus(job.Id, AnalysisJobStatus.Completed, resultData: result);
                     
-                    System.Diagnostics.Trace.WriteLine($"Schedule analysis completed for job {job.JobId}, user {job.TilerUserId}");
+                    System.Diagnostics.Trace.WriteLine($"Schedule analysis completed for job {job.Id}, user {job.TilerUserId}");
                 }
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Trace.TraceError($"Error in ProcessScheduleAnalysisAsync for job {job.JobId}: {ex.Message}\n{ex.StackTrace}");
+                System.Diagnostics.Trace.TraceError($"Error in ProcessScheduleAnalysisAsync for job {job.Id}: {ex.Message}\n{ex.StackTrace}");
                 throw; // Re-throw to be handled by ProcessJobAsync retry logic
             }
         }
@@ -652,7 +648,7 @@ namespace PostProcessingServer.Services
                     string result = Newtonsoft.Json.JsonConvert.SerializeObject(new
                     {
                         status = "success",
-                        jobId = job.JobId,
+                        jobId = job.Id,
                         type = "processRequest",
                         userId = job.TilerUserId,
                         vibeRequestId = vibeRequestId,
@@ -661,14 +657,14 @@ namespace PostProcessingServer.Services
                         completedAt = now
                     });
 
-                    _jobQueue.UpdateJobStatus(job.JobId, AnalysisJobStatus.Completed, resultData: result);
+                    _jobQueue.UpdateJobStatus(job.Id, AnalysisJobStatus.Completed, resultData: result);
 
-                    System.Diagnostics.Trace.WriteLine($"ProcessRequest preview completed for job {job.JobId}, VibeRequest {vibeRequestId}, user {job.TilerUserId}");
+                    System.Diagnostics.Trace.WriteLine($"ProcessRequest preview completed for job {job.Id}, VibeRequest {vibeRequestId}, user {job.TilerUserId}");
                 }
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Trace.TraceError($"Error in ProcessRequestPreviewAsync for job {job.JobId}: {ex.Message}\n{ex.StackTrace}");
+                System.Diagnostics.Trace.TraceError($"Error in ProcessRequestPreviewAsync for job {job.Id}: {ex.Message}\n{ex.StackTrace}");
                 throw; // Re-throw to be handled by ProcessJobAsync retry logic
             }
         }

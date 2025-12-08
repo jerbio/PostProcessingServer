@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using PostProcessingServer.Models;
 using TilerElements;
+using TilerCrossServerResources;
 
 namespace PostProcessingServer.Services
 {
@@ -68,7 +69,7 @@ namespace PostProcessingServer.Services
 
                             // Add to in-memory queue
                             _queue.Enqueue(job);
-                            _activeJobs.TryAdd(job.JobId, job);
+                            _activeJobs.TryAdd(job.Id, job);
                             _signal.Release();
                             loadedCount++;
                         }
@@ -111,12 +112,12 @@ namespace PostProcessingServer.Services
             if (job == null)
                 throw new ArgumentNullException(nameof(job));
 
-            if (string.IsNullOrWhiteSpace(job.JobId))
+            if (string.IsNullOrWhiteSpace(job.Id))
                 throw new ArgumentException("Job must have a valid JobId", nameof(job));
 
             job.Status = AnalysisJobStatus.Queued;
             _queue.Enqueue(job);
-            _activeJobs.TryAdd(job.JobId, job);
+            _activeJobs.TryAdd(job.Id, job);
             
             // Persist to database
             try
@@ -129,7 +130,7 @@ namespace PostProcessingServer.Services
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Trace.TraceError($"Failed to persist new job {job.JobId}: {ex.Message}");
+                System.Diagnostics.Trace.TraceError($"Failed to persist new job {job.Id}: {ex.Message}");
             }
             
             // Signal that a new item is available
@@ -257,7 +258,7 @@ namespace PostProcessingServer.Services
                             j.Status == AnalysisJobStatus.Cancelled) &&
                            j.CompletedAt.HasValue &&
                            j.CompletedAt.Value < cutoffTime)
-                .Select(j => j.JobId)
+                .Select(j => j.Id)
                 .ToList();
 
             int removedCount = 0;
@@ -279,7 +280,7 @@ namespace PostProcessingServer.Services
                     using (var db = new PostProcessingServer.Models.PostProcessorApplicationDbContext())
                     {
                         var dbJobsToRemove = db.AnalysisJobs
-                            .Where(j => jobsToRemove.Contains(j.JobId))
+                            .Where(j => jobsToRemove.Contains(j.Id))
                             .ToList();
 
                         db.AnalysisJobs.RemoveRange(dbJobsToRemove);

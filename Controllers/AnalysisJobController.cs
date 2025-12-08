@@ -7,6 +7,7 @@ using System.Web.Http.Description;
 using PostProcessingServer.Models;
 using PostProcessingServer.Filters;
 using PostProcessingServer.Services;
+using TilerCrossServerResources;
 
 namespace PostProcessingServer.Controllers
 {
@@ -63,7 +64,7 @@ namespace PostProcessingServer.Controllers
 
                 _jobQueue.Enqueue(job);
 
-                var response = AnalysisJobResponse.CreateSuccess(job.JobId);
+                var response = AnalysisJobResponse.CreateSuccess(job.Id);
                 return Ok(response);
             }
             catch (Exception ex)
@@ -99,7 +100,7 @@ namespace PostProcessingServer.Controllers
 
                 _jobQueue.Enqueue(job);
 
-                var response = AnalysisJobResponse.CreateSuccess(job.JobId);
+                var response = AnalysisJobResponse.CreateSuccess(job.Id);
                 return Ok(response);
             }
             catch (Exception ex)
@@ -135,7 +136,7 @@ namespace PostProcessingServer.Controllers
 
                 _jobQueue.Enqueue(job);
 
-                var response = AnalysisJobResponse.CreateSuccess(job.JobId);
+                var response = AnalysisJobResponse.CreateSuccess(job.Id);
                 return Ok(response);
             }
             catch (Exception ex)
@@ -165,7 +166,7 @@ namespace PostProcessingServer.Controllers
                 return Ok(AnalysisJobStatusResponse.CreateNotFound(jobId));
             }
 
-            return Ok(AnalysisJobStatusResponse.FromJob(job));
+            return Ok(job.ToStatusResponse());
         }
 
         /// <summary>
