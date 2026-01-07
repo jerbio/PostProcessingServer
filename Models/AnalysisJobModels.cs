@@ -62,16 +62,13 @@ namespace PostProcessingServer.Models
         public AnalysisJob() : base()
         {
             // Use Ulid for PostProcessingServer for better time-ordered IDs
-
-            string userId = (this.TilerUserId ?? this.TilerUser?.Id ?? "no-user-");
-            SetJobId("anJob_"+ userId + Ulid.NewUlid().ToString());
             CreatedAt = Utility.now();
             ExpiresAt = Utility.now().AddDays(7);
         }
 
         public override string GenerateJobId()
         {
-            string retValue = _idPrefix + (this.TilerUserId ?? this.TilerUser?.Id ?? "no-user-") + (Ulid.NewUlid().ToString());
+            string retValue = _idPrefix + (this.TilerUserId ?? this.TilerUser?.Id ?? "no-user") +"_"+ (Ulid.NewUlid().ToString());
             return retValue;
         }
 

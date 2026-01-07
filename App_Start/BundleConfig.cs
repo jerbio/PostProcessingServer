@@ -1,5 +1,7 @@
-﻿using System.Web;
+﻿using System.Configuration;
+using System.Web;
 using System.Web.Optimization;
+using TilerElements;
 
 namespace PostProcessingServer
 {
@@ -8,6 +10,8 @@ namespace PostProcessingServer
         // For more information on bundling, visit https://go.microsoft.com/fwlink/?LinkId=301862
         public static void RegisterBundles(BundleCollection bundles)
         {
+            string apiKey = ConfigurationManager.AppSettings["googleMapsApiKeyServerSide"];
+            Location.updateApiKey(apiKey);
             bundles.Add(new ScriptBundle("~/bundles/jquery").Include(
                         "~/Scripts/jquery-{version}.js"));
 

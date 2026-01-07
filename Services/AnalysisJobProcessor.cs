@@ -351,7 +351,27 @@ namespace PostProcessingServer.Services
             Dictionary<string, CalendarEvent> allScheduleData = calEvents.GroupBy(o => o.Id).ToDictionary(g => g.Key, g => g.First());
             Dictionary<string, TilerElements.Location> locationCache = res.GroupBy(o => o.Id).ToDictionary(g => g.Key, g => g.First());
             await logControl.populateScheduleDump(locationCache, allScheduleData, requestLocation).ConfigureAwait(false);
-            await logControl.Commit(calEvents, null, "0", null, logControl.Now, null, requestLocation).ConfigureAwait(false);
+            foreach (var eachCal in calEvents)
+            {
+                if(eachCal.Repeat != null)
+                {
+                    var allRepCal = eachCal.Repeat.RecurringCalendarEvents();
+                    if(allRepCal!=null && allRepCal.Length >0)
+                    {
+                        foreach(var eachRepCal in allRepCal)
+                        {
+                            eachRepCal.Repetition_EventDB = null;
+                        }
+                    }
+                }
+                eachCal.Repetition_EventDB = null;
+            }
+            if(logControl is LogControlDirect)
+            {
+                (logControl as LogControlDirect).SetWriteAllSubEvents(true);
+            }
+            //logControl.SetWriteAllSubEvents(true);
+            await logControl.Commit(calEvents, null, null, logControl.Now, null, requestLocation).ConfigureAwait(false);
         }
 
 
@@ -405,8 +425,10 @@ namespace PostProcessingServer.Services
                         throw new InvalidOperationException($"TilerUser not found: {job.TilerUserId}");
                     }
 
+                    ReferenceNow referenceNow = new ReferenceNow(Utility.now(), tilerUser.EndOfDay, tilerUser, tilerUser.TimeZone_DB);
+
                     // Initialize LogControl
-                    var logControl = new TilerFront.LogControlDirect(tilerUser, db);
+                    var logControl = new AnalysisLogControl(tilerUser, db, cacheContextCount: 0);
                     
                     // Get the request location
                     TilerElements.Location requestLocation = requestData.getCurrentLocation();
@@ -419,6 +441,30 @@ namespace PostProcessingServer.Services
 
                     // Call the SuggestionAnalysis method (it handles both suggestion and schedule analysis)
                     await SuggestionAnalysis(logControl, requestLocation, db).ConfigureAwait(false);
+
+                    tilerUser = await db.Users.Include(o => o.ScheduleProfile_DB)
+                        .FirstOrDefaultAsync(o => o.Id == job.TilerUserId)
+                        .ConfigureAwait(false);
+
+                    if (tilerUser == null)
+                    {
+                        throw new InvalidOperationException($"TilerUser not found: {job.TilerUserId}");
+                    }
+
+                    // Initialize LogControl
+                    logControl = new AnalysisLogControl(tilerUser, db);
+                    
+                    var timeLineContraint = new TimeLine(referenceNow.constNow.AddDays(Utility.defaultBeginDay), referenceNow.constNow.AddDays(Utility.defaultEndDay));
+                    Dictionary<string, CalendarEvent> getRelevantSubEventQueryTask = await logControl.getAllEnabledCalendarEvent(
+                        timeLineContraint,
+                        referenceNow,
+                        DataRetrievalSet.scheduleManipulation).ConfigureAwait(false);
+                    logControl.SetWriteAllSubEvents(true);
+                    await logControl.Commit(getRelevantSubEventQueryTask.Values, null, "", referenceNow, null, null).ConfigureAwait(false);
+
+
+
+
 
                     // Update job status with success
                     string result = Newtonsoft.Json.JsonConvert.SerializeObject(new
@@ -612,7 +658,7 @@ namespace PostProcessingServer.Services
                     vibeRequest.AfterScheduleId = afterScheduleId;
                     
                     db.Users.AddOrUpdate(tilerUser);
-                    dump = await schedule.CreateScheduleDump(currentLocation).ConfigureAwait(false);
+                    dump = await schedule.CreateScheduleDump(currentLocation, dumpTimeLine: new TimeLine(schedule.Now.constNow.AddDays(-7), schedule.Now.constNow.AddDays(7))).ConfigureAwait(false);
                     var now = Utility.now();
                     if (dump?.XmlDoc != null)
                     {
@@ -626,15 +672,20 @@ namespace PostProcessingServer.Services
                         };
                         log.UpdateTrigger(BigDataTiler.TriggerType.preview);
                         log.Id = log.GenerateId();
-                        log.loadXmlFile(dump.XmlDoc);
-                        await bigDataControl.AddLogDocument(log).ConfigureAwait(false);
+                        
+                        // Load XML and get split documents if needed (handles Cosmos DB size limits)
+                        List<BigDataTiler.LogChange> splitLogs = log.loadXmlFile(dump.XmlDoc);
+                        
+                        // Add all split documents to Cosmos DB
+                        string savedLogId = await bigDataControl.AddLogDocuments(splitLogs).ConfigureAwait(false);
+                        System.Diagnostics.Trace.WriteLine($"Saved {splitLogs.Count} LogChange document(s) for job {job.Id}, parent ID: {savedLogId}");
 
                         using (var writeDb = new TilerFront.Models.ApplicationDbContext())
                         {
                             var vibePreview = new TilerElements.VibePreview
                             {
                                 VibeRequestId = vibeRequest.Id,
-                                ScheduleDumpId = log.Id,
+                                ScheduleDumpId = savedLogId,
                                 CreationTimeInMs = now.ToUnixTimeMilliseconds(),
                                 TilerUserId = job.TilerUserId
                             };
