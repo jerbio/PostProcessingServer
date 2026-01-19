@@ -353,12 +353,12 @@ namespace PostProcessingServer.Services
             await logControl.populateScheduleDump(locationCache, allScheduleData, requestLocation).ConfigureAwait(false);
             foreach (var eachCal in calEvents)
             {
-                if(eachCal.Repeat != null)
+                if (eachCal.Repeat != null)
                 {
                     var allRepCal = eachCal.Repeat.RecurringCalendarEvents();
-                    if(allRepCal!=null && allRepCal.Length >0)
+                    if (allRepCal != null && allRepCal.Length > 0)
                     {
-                        foreach(var eachRepCal in allRepCal)
+                        foreach (var eachRepCal in allRepCal)
                         {
                             eachRepCal.Repetition_EventDB = null;
                         }
@@ -366,12 +366,19 @@ namespace PostProcessingServer.Services
                 }
                 eachCal.Repetition_EventDB = null;
             }
-            if(logControl is LogControlDirect)
+            if (logControl is LogControlDirect)
             {
                 (logControl as LogControlDirect).SetWriteAllSubEvents(true);
             }
-            //logControl.SetWriteAllSubEvents(true);
             await logControl.Commit(calEvents, null, null, logControl.Now, null, requestLocation).ConfigureAwait(false);
+            var retrievedUser = logControl.getTilerRetrievedUser();
+            if (retrievedUser.ScheduleProfile != null)
+            {
+                DateTimeOffset currentTime = logControl.Now.getRealTimeNow(true);
+                retrievedUser.ScheduleProfile.updateAnalysisId(currentTime);
+                logControl.getTilerRetrievedUser().ScheduleProfile_DB.updateSubEventSyncId(currentTime);
+                await logControl.Database.SaveChangesAsync().ConfigureAwait(false);
+            }
         }
 
 
