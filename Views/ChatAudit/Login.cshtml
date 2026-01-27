@@ -1,0 +1,68 @@
+@model PostProcessingServer.Models.ChatAuditLoginViewModel
+@{
+    ViewBag.Title = "Chat Audit - Login";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-6 col-lg-4">
+            <div class="card shadow">
+                <div class="card-header bg-primary text-white text-center">
+                    <h4 class="mb-0">
+                        <i class="bi bi-shield-lock"></i> Chat Audit Login
+                    </h4>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted text-center mb-4">
+                        Please enter your credentials to access the chat audit system.
+                    </p>
+
+                    @if (!string.IsNullOrEmpty(Model.ErrorMessage))
+                    {
+                        <div class="alert alert-danger" role="alert">
+                            <i class="bi bi-exclamation-triangle"></i> @Model.ErrorMessage
+                        </div>
+                    }
+
+                    @using (Html.BeginForm("Login", "ChatAudit", FormMethod.Post, new { @class = "needs-validation" }))
+                    {
+                        @Html.AntiForgeryToken()
+                        @Html.HiddenFor(m => m.ReturnUrl)
+
+                        <div class="mb-3">
+                            @Html.LabelFor(m => m.Username, new { @class = "form-label" })
+                            <div class="input-group">
+                                <span class="input-group-text"><i class="bi bi-person"></i></span>
+                                @Html.TextBoxFor(m => m.Username, new { @class = "form-control", placeholder = "Enter username", autocomplete = "username", autofocus = "autofocus" })
+                            </div>
+                            @Html.ValidationMessageFor(m => m.Username, "", new { @class = "text-danger small" })
+                        </div>
+
+                        <div class="mb-4">
+                            @Html.LabelFor(m => m.Password, new { @class = "form-label" })
+                            <div class="input-group">
+                                <span class="input-group-text"><i class="bi bi-key"></i></span>
+                                @Html.PasswordFor(m => m.Password, new { @class = "form-control", placeholder = "Enter password", autocomplete = "current-password" })
+                            </div>
+                            @Html.ValidationMessageFor(m => m.Password, "", new { @class = "text-danger small" })
+                        </div>
+
+                        <div class="d-grid">
+                            <button type="submit" class="btn btn-primary btn-lg">
+                                <i class="bi bi-box-arrow-in-right"></i> Sign In
+                            </button>
+                        </div>
+                    }
+                </div>
+                <div class="card-footer text-center text-muted small">
+                    <i class="bi bi-info-circle"></i> This is a restricted area for authorized auditors only.
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section scripts {
+    @Scripts.Render("~/bundles/jqueryval")
+}

@@ -1,0 +1,311 @@
+@model PostProcessingServer.Models.ChatDetailViewModel
+@{
+    ViewBag.Title = "Chat - " + Model.SessionTitle;
+}
+
+<style>
+    .chat-container {
+        max-width: 900px;
+        margin: 0 auto;
+    }
+
+    .message-bubble {
+        max-width: 80%;
+        padding: 12px 16px;
+        border-radius: 18px;
+        margin-bottom: 8px;
+        position: relative;
+    }
+
+    .message-user {
+        background-color: #007bff;
+        color: white;
+        margin-left: auto;
+        border-bottom-right-radius: 4px;
+    }
+
+    .message-tiler {
+        background-color: #e9ecef;
+        color: #212529;
+        margin-right: auto;
+        border-bottom-left-radius: 4px;
+    }
+
+    .message-auto {
+        background-color: #fff3cd;
+        color: #856404;
+        margin-right: auto;
+        border-bottom-left-radius: 4px;
+    }
+
+    .message-system {
+        background-color: #d1ecf1;
+        color: #0c5460;
+        margin: 0 auto;
+        text-align: center;
+        border-radius: 8px;
+    }
+
+    .message-wrapper {
+        display: flex;
+        flex-direction: column;
+        margin-bottom: 16px;
+    }
+
+    .message-wrapper.user-message {
+        align-items: flex-end;
+    }
+
+    .message-wrapper.other-message {
+        align-items: flex-start;
+    }
+
+    .message-wrapper.system-message {
+        align-items: center;
+    }
+
+    .message-meta {
+        font-size: 0.75rem;
+        color: #6c757d;
+        margin-top: 4px;
+        padding: 0 8px;
+    }
+
+    .message-sender {
+        font-weight: 600;
+        margin-bottom: 4px;
+        font-size: 0.85rem;
+    }
+
+    .message-content {
+        white-space: pre-wrap;
+        word-wrap: break-word;
+    }
+
+    .chat-messages {
+        background-color: #f8f9fa;
+        border-radius: 8px;
+        padding: 20px;
+        min-height: 400px;
+    }
+
+    .session-info {
+        background-color: #fff;
+        border-left: 4px solid #007bff;
+    }
+
+    .audit-badge {
+        position: fixed;
+        top: 70px;
+        right: 20px;
+        z-index: 1000;
+    }
+</style>
+
+<div class="container mt-4">
+    <!-- User Info Bar -->
+    <div class="row mb-2">
+        <div class="col-12 d-flex justify-content-end align-items-center">
+            @if (ViewBag.CurrentUser != null)
+            {
+                <div class="d-flex align-items-center">
+                    <span class="badge bg-secondary me-2">
+                        <i class="bi bi-person-circle"></i> @ViewBag.CurrentUser
+                    </span>
+                    @using (Html.BeginForm("Logout", "ChatAudit", FormMethod.Post, new { @class = "d-inline" }))
+                    {
+                        @Html.AntiForgeryToken()
+                        <button type="submit" class="btn btn-outline-danger btn-sm">
+                            <i class="bi bi-box-arrow-right"></i> Logout
+                        </button>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+
+    <!-- Audit Mode Badge -->
+    <div class="audit-badge">
+        <span class="badge bg-warning text-dark">
+            <i class="bi bi-eye"></i> Read-Only Audit Mode
+        </span>
+    </div>
+
+    <!-- Breadcrumb -->
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item">@Html.ActionLink("Chat Audit", "Index")</li>
+            <li class="breadcrumb-item">@Html.ActionLink("Sessions", "Sessions", new { id = Model.UserId })</li>
+            <li class="breadcrumb-item active" aria-current="page">Chat</li>
+        </ol>
+    </nav>
+
+    <!-- Session Info Card -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card session-info">
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-8">
+                            <h4 class="card-title">
+                                <i class="bi bi-chat-square-text"></i>
+                                @Model.SessionTitle
+                            </h4>
+                            <p class="card-text text-muted mb-1">
+                                <strong>User:</strong> <code>@Model.UserId</code>
+                                <span class="badge bg-secondary ms-2">@Model.UserName</span>
+                            </p>
+                            <p class="card-text text-muted mb-0">
+                                <strong>Session ID:</strong> <code class="small">@Model.SessionId</code>
+                            </p>
+                        </div>
+                        <div class="col-md-4 text-md-end">
+                            <p class="mb-1">
+                                <i class="bi bi-calendar"></i>
+                                @Model.SessionCreatedAt.ToString("yyyy-MM-dd HH:mm:ss")
+                            </p>
+                            <p class="mb-1">
+                                <i class="bi bi-globe"></i> @Model.Language
+                            </p>
+                            <p class="mb-0">
+                                <span class="badge bg-primary">@Model.Pagination.TotalItems messages</span>
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Chat Messages -->
+    <div class="chat-container">
+        <div class="chat-messages">
+            @if (Model.Messages == null || Model.Messages.Count == 0)
+            {
+                <div class="text-center text-muted py-5">
+                    <i class="bi bi-chat-dots" style="font-size: 3rem;"></i>
+                    <p class="mt-3">No messages in this session.</p>
+                </div>
+            }
+            else
+            {
+                foreach (var message in Model.Messages)
+                {
+                    var wrapperClass = message.Origin?.ToLower() == "user" ? "user-message" : 
+                                       message.Origin?.ToLower() == "system" ? "system-message" : "other-message";
+                    
+                    <div class="message-wrapper @wrapperClass">
+                        <div class="message-sender">
+                            <i class="bi @message.GetSenderIcon()"></i>
+                            @message.GetSenderDisplayName()
+                            if (message.IsActionable == false)
+                            {
+                                <span class="badge bg-secondary ms-1" title="Non-actionable">NA</span>
+                            }
+                        </div>
+                        <div class="message-bubble @message.GetMessageCssClass()">
+                            <div class="message-content">@(message.Content ?? "<empty>")</div>
+                        </div>
+                        <div class="message-meta">
+                            @message.CreatedAt.ToString("HH:mm:ss")
+                            if (!string.IsNullOrEmpty(message.RequestId))
+                            {
+                                <span class="ms-2" title="Request ID">
+                                    <i class="bi bi-link-45deg"></i>
+                                    <code class="small">@message.RequestId.Substring(0, Math.Min(20, message.RequestId.Length))...</code>
+                                </span>
+                            }
+                        </div>
+                    </div>
+                }
+            }
+        </div>
+    </div>
+
+    <!-- Pagination -->
+    @if (Model.Pagination.TotalPages > 1)
+    {
+        <div class="row mt-4">
+            <div class="col-12">
+                <nav aria-label="Message pagination">
+                    <ul class="pagination justify-content-center">
+                        if (Model.Pagination.HasPreviousPage)
+                        {
+                            <li class="page-item">
+                                <a class="page-link" href="@Url.Action("Chat", new { id = Model.SessionId, page = 1 })">
+                                    <i class="bi bi-chevron-double-left"></i>
+                                </a>
+                            </li>
+                            <li class="page-item">
+                                <a class="page-link" href="@Url.Action("Chat", new { id = Model.SessionId, page = Model.Pagination.CurrentPage - 1 })">
+                                    <i class="bi bi-chevron-left"></i> Newer
+                                </a>
+                            </li>
+                        }
+                        else
+                        {
+                            <li class="page-item disabled">
+                                <span class="page-link"><i class="bi bi-chevron-double-left"></i></span>
+                            </li>
+                            <li class="page-item disabled">
+                                <span class="page-link"><i class="bi bi-chevron-left"></i> Newer</span>
+                            </li>
+                        }
+
+                        @foreach (var pageNum in Model.Pagination.GetPageRange(7))
+                        {
+                            if (pageNum == Model.Pagination.CurrentPage)
+                            {
+                                <li class="page-item active">
+                                    <span class="page-link">@pageNum</span>
+                                </li>
+                            }
+                            else
+                            {
+                                <li class="page-item">
+                                    <a class="page-link" href="@Url.Action("Chat", new { id = Model.SessionId, page = pageNum })">@pageNum</a>
+                                </li>
+                            }
+                        }
+
+                        if (Model.Pagination.HasNextPage)
+                        {
+                            <li class="page-item">
+                                <a class="page-link" href="@Url.Action("Chat", new { id = Model.SessionId, page = Model.Pagination.CurrentPage + 1 })">
+                                    Older <i class="bi bi-chevron-right"></i>
+                                </a>
+                            </li>
+                            <li class="page-item">
+                                <a class="page-link" href="@Url.Action("Chat", new { id = Model.SessionId, page = Model.Pagination.TotalPages })">
+                                    <i class="bi bi-chevron-double-right"></i>
+                                </a>
+                            </li>
+                        }
+                        else
+                        {
+                            <li class="page-item disabled">
+                                <span class="page-link">Older <i class="bi bi-chevron-right"></i></span>
+                            </li>
+                            <li class="page-item disabled">
+                                <span class="page-link"><i class="bi bi-chevron-double-right"></i></span>
+                            </li>
+                        }
+                    </ul>
+                </nav>
+                <p class="text-center text-muted small">
+                    Showing messages @((Model.Pagination.CurrentPage - 1) * Model.Pagination.PageSize + 1) - 
+                    @Math.Min(Model.Pagination.CurrentPage * Model.Pagination.PageSize, Model.Pagination.TotalItems) 
+                    of @Model.Pagination.TotalItems
+                </p>
+            </div>
+        </div>
+    }
+
+    <!-- Navigation -->
+    <div class="row mt-4 mb-4">
+        <div class="col-12 d-flex justify-content-between">
+            @Html.ActionLink("« Back to Sessions", "Sessions", new { id = Model.UserId }, new { @class = "btn btn-outline-secondary" })
+            @Html.ActionLink("New Search", "Index", null, new { @class = "btn btn-outline-primary" })
+        </div>
+    </div>
+</div>

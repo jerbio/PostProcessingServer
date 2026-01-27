@@ -1,0 +1,21 @@
+@using PostProcessingServer.Filters
+@{
+    var isAuthenticated = ChatAuditAuthorizeAttribute.IsAuthenticated(Context);
+    var currentUser = ChatAuditAuthorizeAttribute.GetCurrentUsername(Context);
+}
+
+@if (isAuthenticated && !string.IsNullOrEmpty(currentUser))
+{
+    <div class="d-flex align-items-center">
+        <span class="text-light me-3">
+            <i class="bi bi-person-circle"></i> @currentUser
+        </span>
+        @using (Html.BeginForm("Logout", "ChatAudit", FormMethod.Post, new { @class = "d-inline" }))
+        {
+            @Html.AntiForgeryToken()
+            <button type="submit" class="btn btn-outline-light btn-sm">
+                <i class="bi bi-box-arrow-right"></i> Logout
+            </button>
+        }
+    </div>
+}

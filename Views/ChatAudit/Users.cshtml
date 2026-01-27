@@ -1,0 +1,219 @@
+@model PostProcessingServer.Models.AnonymousUserListViewModel
+@{
+    ViewBag.Title = "Anonymous Users - Chat Audit";
+}
+
+<div class="container mt-4">
+    <!-- User Info Bar -->
+    <div class="row mb-2">
+        <div class="col-12 d-flex justify-content-end align-items-center">
+            @if (ViewBag.CurrentUser != null)
+            {
+                <div class="d-flex align-items-center">
+                    <span class="badge bg-secondary me-2">
+                        <i class="bi bi-person-circle"></i> @ViewBag.CurrentUser
+                    </span>
+                    @using (Html.BeginForm("Logout", "ChatAudit", FormMethod.Post, new { @class = "d-inline" }))
+                    {
+                        @Html.AntiForgeryToken()
+                        <button type="submit" class="btn btn-outline-danger btn-sm">
+                            <i class="bi bi-box-arrow-right"></i> Logout
+                        </button>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+
+    <!-- Breadcrumb -->
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item">@Html.ActionLink("Chat Audit", "Index")</li>
+            <li class="breadcrumb-item active" aria-current="page">Browse Users</li>
+        </ol>
+    </nav>
+
+    <div class="row mb-4">
+        <div class="col-12">
+            <h2><i class="bi bi-people"></i> Anonymous Users</h2>
+            <p class="text-muted">Browse all anonymous users to view their chat history.</p>
+        </div>
+    </div>
+
+    @if (TempData["ErrorMessage"] != null)
+    {
+        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+            @TempData["ErrorMessage"]
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+    }
+
+    @if (Model.Users == null || Model.Users.Count == 0)
+    {
+        <div class="alert alert-info" role="alert">
+            <i class="bi bi-info-circle"></i> No anonymous users found.
+        </div>
+    }
+    else
+    {
+        <!-- User Stats -->
+        <div class="row mb-3">
+            <div class="col-12">
+                <div class="d-flex justify-content-between align-items-center">
+                    <span class="text-muted">
+                        Showing @((Model.Pagination.CurrentPage - 1) * Model.Pagination.PageSize + 1) - 
+                        @Math.Min(Model.Pagination.CurrentPage * Model.Pagination.PageSize, Model.Pagination.TotalItems) 
+                        of @Model.Pagination.TotalItems users
+                    </span>
+                    <span class="badge bg-primary">Page @Model.Pagination.CurrentPage of @Model.Pagination.TotalPages</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- User List -->
+        <div class="row">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header bg-dark text-white">
+                        <i class="bi bi-list-ul"></i> Anonymous Users
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>User ID</th>
+                                    <th>Username</th>
+                                    <th>Created</th>
+                                    <th>Time Zone</th>
+                                    <th class="text-center">Sessions</th>
+                                    <th class="text-center">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var user in Model.Users)
+                                {
+                                    <tr>
+                                        <td>
+                                            <code class="small">@user.UserId.Substring(0, Math.Min(25, user.UserId.Length))@(user.UserId.Length > 25 ? "..." : "")</code>
+                                        </td>
+                                        <td>
+                                            @user.UserName
+                                            <span class="badge bg-info ms-1">Anonymous</span>
+                                        </td>
+                                        <td>
+                                            @if (user.CreatedAt.HasValue)
+                                            {
+                                                @user.CreatedAt.Value.ToString("yyyy-MM-dd HH:mm")
+                                            }
+                                            else
+                                            {
+                                                <span class="text-muted">N/A</span>
+                                            }
+                                        </td>
+                                        <td>@(user.TimeZone ?? "Not set")</td>
+                                        <td class="text-center">
+                                            <span class="badge bg-@(user.SessionCount > 0 ? "primary" : "secondary")">
+                                                @user.SessionCount
+                                            </span>
+                                        </td>
+                                        <td class="text-center">
+                                            @if (user.SessionCount > 0)
+                                            {
+                                                @Html.ActionLink("View Chats", "Sessions", new { id = user.UserId }, new { @class = "btn btn-sm btn-outline-primary" })
+                                            }
+                                            else
+                                            {
+                                                <span class="text-muted small">No sessions</span>
+                                            }
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Pagination -->
+        if (Model.Pagination.TotalPages > 1)
+        {
+            <div class="row mt-4">
+                <div class="col-12">
+                    <nav aria-label="User pagination">
+                        <ul class="pagination justify-content-center">
+                            @if (Model.Pagination.HasPreviousPage)
+                            {
+                                <li class="page-item">
+                                    <a class="page-link" href="@Url.Action("Users", new { page = 1 })">
+                                        <i class="bi bi-chevron-double-left"></i>
+                                    </a>
+                                </li>
+                                <li class="page-item">
+                                    <a class="page-link" href="@Url.Action("Users", new { page = Model.Pagination.CurrentPage - 1 })">
+                                        <i class="bi bi-chevron-left"></i> Previous
+                                    </a>
+                                </li>
+                            }
+                            else
+                            {
+                                <li class="page-item disabled">
+                                    <span class="page-link"><i class="bi bi-chevron-double-left"></i></span>
+                                </li>
+                                <li class="page-item disabled">
+                                    <span class="page-link"><i class="bi bi-chevron-left"></i> Previous</span>
+                                </li>
+                            }
+
+                            @foreach (var pageNum in Model.Pagination.GetPageRange(5))
+                            {
+                                if (pageNum == Model.Pagination.CurrentPage)
+                                {
+                                    <li class="page-item active">
+                                        <span class="page-link">@pageNum</span>
+                                    </li>
+                                }
+                                else
+                                {
+                                    <li class="page-item">
+                                        <a class="page-link" href="@Url.Action("Users", new { page = pageNum })">@pageNum</a>
+                                    </li>
+                                }
+                            }
+
+                            @if (Model.Pagination.HasNextPage)
+                            {
+                                <li class="page-item">
+                                    <a class="page-link" href="@Url.Action("Users", new { page = Model.Pagination.CurrentPage + 1 })">
+                                        Next <i class="bi bi-chevron-right"></i>
+                                    </a>
+                                </li>
+                                <li class="page-item">
+                                    <a class="page-link" href="@Url.Action("Users", new { page = Model.Pagination.TotalPages })">
+                                        <i class="bi bi-chevron-double-right"></i>
+                                    </a>
+                                </li>
+                            }
+                            else
+                            {
+                                <li class="page-item disabled">
+                                    <span class="page-link">Next <i class="bi bi-chevron-right"></i></span>
+                                </li>
+                                <li class="page-item disabled">
+                                    <span class="page-link"><i class="bi bi-chevron-double-right"></i></span>
+                                </li>
+                            }
+                        </ul>
+                    </nav>
+                </div>
+            </div>
+        }
+    }
+
+    <!-- Back Button -->
+    <div class="row mt-4">
+        <div class="col-12">
+            @Html.ActionLink("« Back to Search", "Index", null, new { @class = "btn btn-outline-secondary" })
+        </div>
+    </div>
+</div>

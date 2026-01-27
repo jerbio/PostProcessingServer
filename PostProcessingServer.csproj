@@ -227,8 +227,12 @@
     <Compile Include="App_Start\RouteConfig.cs" />
     <Compile Include="App_Start\Startup.Auth.cs" />
     <Compile Include="App_Start\WebApiConfig.cs" />
+    <Compile Include="Controllers\AccountController.cs" />
     <Compile Include="Controllers\AnalysisJobController.cs" />
+    <Compile Include="Controllers\ChatAuditController.cs" />
+    <Compile Include="Controllers\ManageController.cs" />
     <Compile Include="Controllers\NotHomeController.cs" />
+    <Compile Include="Filters\ChatAuditAuthorizeAttribute.cs" />
     <Compile Include="Filters\ServerAuthenticationAttribute.cs" />
     <Compile Include="Global.asax.cs">
       <DependentUpon>Global.asax</DependentUpon>
@@ -236,12 +240,15 @@
     <Compile Include="Migrations\Configuration.cs" />
     <Compile Include="Models\AccountViewModels.cs" />
     <Compile Include="Models\AnalysisJobModels.cs" />
+    <Compile Include="Models\ChatAuditViewModels.cs" />
     <Compile Include="Models\IdentityModels.cs" />
     <Compile Include="Models\ManageViewModels.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="Services\AnalysisJobProcessor.cs" />
     <Compile Include="Services\AnalysisJobQueue.cs" />
     <Compile Include="Services\AnalysisLogControl.cs" />
+    <Compile Include="Services\ChatAuditService.cs" />
+    <Compile Include="Services\IChatAuditService.cs" />
     <Compile Include="Startup.cs" />
     <Compile Include="Utilities\ConfigurationUtility.cs" />
   </ItemGroup>
@@ -317,9 +324,16 @@
     <Content Include="Views\Manage\VerifyPhoneNumber.cshtml" />
     <Content Include="Views\Shared\Lockout.cshtml" />
     <Content Include="Views\Shared\_LoginPartial.cshtml" />
+    <Content Include="Views\ChatAudit\Chat.cshtml" />
+    <Content Include="Views\ChatAudit\Index.cshtml" />
+    <Content Include="Views\ChatAudit\Sessions.cshtml" />
+    <Content Include="Views\ChatAudit\Login.cshtml" />
+    <Content Include="Views\ChatAudit\Users.cshtml" />
+    <Content Include="Views\ChatAudit\_AuditUserPartial.cshtml" />
   </ItemGroup>
   <ItemGroup>
     <Folder Include="App_Data\" />
+    <Folder Include="Views\ChatHistory\" />
   </ItemGroup>
   <ItemGroup>
     <Content Include="Content\bootstrap.rtl.min.css.map" />

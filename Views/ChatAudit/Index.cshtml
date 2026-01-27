@@ -1,0 +1,154 @@
+@model PostProcessingServer.Models.UserSearchViewModel
+@{
+    ViewBag.Title = "Chat Audit - User Search";
+}
+
+<div class="container mt-4">
+    <!-- User Info Bar -->
+    <div class="row mb-3">
+        <div class="col-12 d-flex justify-content-between align-items-center">
+            <h2 class="mb-0"><i class="bi bi-search"></i> Chat History Audit</h2>
+            @if (ViewBag.CurrentUser != null)
+            {
+                <div class="d-flex align-items-center">
+                    <span class="badge bg-secondary me-2">
+                        <i class="bi bi-person-circle"></i> @ViewBag.CurrentUser
+                    </span>
+                    @using (Html.BeginForm("Logout", "ChatAudit", FormMethod.Post, new { @class = "d-inline" }))
+                    {
+                        @Html.AntiForgeryToken()
+                        <button type="submit" class="btn btn-outline-danger btn-sm">
+                            <i class="bi bi-box-arrow-right"></i> Logout
+                        </button>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+    <div class="row">
+        <div class="col-12">
+            <p class="text-muted">Search for anonymous users by ID or browse all anonymous users to view their chat history.</p>
+            <hr />
+        </div>
+    </div>
+
+    @if (TempData["ErrorMessage"] != null)
+    {
+        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+            @TempData["ErrorMessage"]
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+    }
+
+    <!-- Action Buttons -->
+    <div class="row mb-4">
+        <div class="col-12">
+            @Html.ActionLink("Browse All Anonymous Users", "Users", null, new { @class = "btn btn-outline-primary btn-lg" })
+        </div>
+    </div>
+
+    <!-- Search Form -->
+    <div class="row">
+        <div class="col-md-8 col-lg-6">
+            <div class="card">
+                <div class="card-header bg-primary text-white">
+                    <i class="bi bi-person-search"></i> Search by User ID
+                </div>
+                <div class="card-body">
+                    @using (Html.BeginForm("Search", "ChatAudit", FormMethod.Post, new { @class = "needs-validation" }))
+                    {
+                        @Html.AntiForgeryToken()
+                        <div class="mb-3">
+                            @Html.LabelFor(m => m.UserId, new { @class = "form-label" })
+                            <div class="input-group">
+                                @Html.TextBoxFor(m => m.UserId, new { @class = "form-control", placeholder = "Enter anonymous user ID...", autocomplete = "off" })
+                                <button type="submit" class="btn btn-primary">
+                                    <i class="bi bi-search"></i> Search
+                                </button>
+                            </div>
+                            <div class="form-text">Enter the full user ID to search for chat history.</div>
+                        </div>
+                    }
+
+                    @if (!string.IsNullOrEmpty(Model.ErrorMessage))
+                    {
+                        <div class="alert alert-warning mt-3" role="alert">
+                            <i class="bi bi-exclamation-triangle"></i> @Model.ErrorMessage
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Search Results -->
+    @if (Model.SearchResult != null)
+    {
+        <div class="row mt-4">
+            <div class="col-md-8 col-lg-6">
+                <div class="card border-success">
+                    <div class="card-header bg-success text-white">
+                        <i class="bi bi-person-check"></i> User Found
+                    </div>
+                    <div class="card-body">
+                        <dl class="row mb-0">
+                            <dt class="col-sm-4">User ID:</dt>
+                            <dd class="col-sm-8"><code>@Model.SearchResult.UserId</code></dd>
+
+                            <dt class="col-sm-4">Username:</dt>
+                            <dd class="col-sm-8">@Model.SearchResult.UserName</dd>
+
+                            <dt class="col-sm-4">Status:</dt>
+                            <dd class="col-sm-8">
+                                if (Model.SearchResult.IsAnonymous)
+                                {
+                                    <span class="badge bg-info">Anonymous</span>
+                                }
+                                else
+                                {
+                                    <span class="badge bg-secondary">Registered</span>
+                                }
+                            </dd>
+
+                            if (Model.SearchResult.CreatedAt.HasValue)
+                            {
+                                <dt class="col-sm-4">Created:</dt>
+                                <dd class="col-sm-8">@Model.SearchResult.CreatedAt.Value.ToString("yyyy-MM-dd HH:mm:ss")</dd>
+                            }
+
+                            <dt class="col-sm-4">Time Zone:</dt>
+                            <dd class="col-sm-8">@(Model.SearchResult.TimeZone ?? "Not set")</dd>
+
+                            <dt class="col-sm-4">Chat Sessions:</dt>
+                            <dd class="col-sm-8">
+                                <span class="badge bg-primary">@Model.SearchResult.SessionCount</span>
+                            </dd>
+                        </dl>
+                    </div>
+                    <div class="card-footer">
+                        if (Model.SearchResult.SessionCount > 0)
+                        {
+                            @Html.ActionLink("View Chat Sessions", "Sessions", new { id = Model.SearchResult.UserId }, new { @class = "btn btn-primary" })
+                        }
+                        else
+                        {
+                            <span class="text-muted">No chat sessions available for this user.</span>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@section scripts {
+    <script>
+        // Auto-focus on the search input
+        document.addEventListener('DOMContentLoaded', function () {
+            var searchInput = document.getElementById('UserId');
+            if (searchInput) {
+                searchInput.focus();
+            }
+        });
+    </script>
+}

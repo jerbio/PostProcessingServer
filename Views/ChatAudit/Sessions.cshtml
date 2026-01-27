@@ -1,0 +1,182 @@
+@model PostProcessingServer.Models.ChatSessionListViewModel
+@{
+    ViewBag.Title = "Chat Sessions - " + Model.UserName;
+}
+
+<div class="container mt-4">
+    <!-- User Info Bar -->
+    <div class="row mb-2">
+        <div class="col-12 d-flex justify-content-end align-items-center">
+            @if (ViewBag.CurrentUser != null)
+            {
+                <div class="d-flex align-items-center">
+                    <span class="badge bg-secondary me-2">
+                        <i class="bi bi-person-circle"></i> @ViewBag.CurrentUser
+                    </span>
+                    @using (Html.BeginForm("Logout", "ChatAudit", FormMethod.Post, new { @class = "d-inline" }))
+                    {
+                        @Html.AntiForgeryToken()
+                        <button type="submit" class="btn btn-outline-danger btn-sm">
+                            <i class="bi bi-box-arrow-right"></i> Logout
+                        </button>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+
+    <!-- Breadcrumb -->
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item">@Html.ActionLink("Chat Audit", "Index")</li>
+            <li class="breadcrumb-item active" aria-current="page">Sessions</li>
+        </ol>
+    </nav>
+
+    <div class="row mb-4">
+        <div class="col-12">
+            <h2><i class="bi bi-chat-dots"></i> Chat Sessions</h2>
+            <p class="text-muted">
+                Viewing chat sessions for user: <code>@Model.UserId</code>
+                <span class="badge bg-secondary ms-2">@Model.UserName</span>
+            </p>
+        </div>
+    </div>
+
+    @if (Model.Sessions == null || Model.Sessions.Count == 0)
+    {
+        <div class="alert alert-info" role="alert">
+            <i class="bi bi-info-circle"></i> No chat sessions found for this user.
+        </div>
+    }
+    else
+    {
+        <!-- Session List -->
+        <div class="row">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
+                        <span><i class="bi bi-list-ul"></i> Sessions (@Model.Pagination.TotalItems total)</span>
+                        <span class="badge bg-light text-dark">Page @Model.Pagination.CurrentPage of @Model.Pagination.TotalPages</span>
+                    </div>
+                    <div class="list-group list-group-flush">
+                        @foreach (var session in Model.Sessions)
+                        {
+                            <a href="@Url.Action("Chat", new { id = session.SessionId })" class="list-group-item list-group-item-action">
+                                <div class="d-flex w-100 justify-content-between">
+                                    <h5 class="mb-1">
+                                        <i class="bi bi-chat-left-text"></i>
+                                        @(string.IsNullOrEmpty(session.SessionTitle) ? "Untitled Session" : session.SessionTitle)
+                                    </h5>
+                                    <small class="text-muted">
+                                        <i class="bi bi-clock"></i> @session.CreatedAt.ToString("yyyy-MM-dd HH:mm")
+                                    </small>
+                                </div>
+                                <p class="mb-1 text-muted small">
+                                    @if (!string.IsNullOrEmpty(session.LastMessagePreview))
+                                    {
+                                        <em>"@session.LastMessagePreview"</em>
+                                    }
+                                    else
+                                    {
+                                        <em>No messages</em>
+                                    }
+                                </p>
+                                <div class="d-flex justify-content-between">
+                                    <small>
+                                        <span class="badge bg-primary">@session.MessageCount messages</span>
+                                        <span class="badge bg-secondary">@session.Language</span>
+                                    </small>
+                                    <small class="text-muted">
+                                        ID: <code>@session.SessionId.Substring(0, Math.Min(30, session.SessionId.Length))...</code>
+                                    </small>
+                                </div>
+                            </a>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Pagination -->
+        if (Model.Pagination.TotalPages > 1)
+        {
+            <div class="row mt-4">
+                <div class="col-12">
+                    <nav aria-label="Session pagination">
+                        <ul class="pagination justify-content-center">
+                            if (Model.Pagination.HasPreviousPage)
+                            {
+                                <li class="page-item">
+                                    <a class="page-link" href="@Url.Action("Sessions", new { id = Model.UserId, page = 1 })">
+                                        <i class="bi bi-chevron-double-left"></i>
+                                    </a>
+                                </li>
+                                <li class="page-item">
+                                    <a class="page-link" href="@Url.Action("Sessions", new { id = Model.UserId, page = Model.Pagination.CurrentPage - 1 })">
+                                        <i class="bi bi-chevron-left"></i> Previous
+                                    </a>
+                                </li>
+                            }
+                            else
+                            {
+                                <li class="page-item disabled">
+                                    <span class="page-link"><i class="bi bi-chevron-double-left"></i></span>
+                                </li>
+                                <li class="page-item disabled">
+                                    <span class="page-link"><i class="bi bi-chevron-left"></i> Previous</span>
+                                </li>
+                            }
+
+                            @foreach (var pageNum in Model.Pagination.GetPageRange(5))
+                            {
+                                if (pageNum == Model.Pagination.CurrentPage)
+                                {
+                                    <li class="page-item active">
+                                        <span class="page-link">@pageNum</span>
+                                    </li>
+                                }
+                                else
+                                {
+                                    <li class="page-item">
+                                        <a class="page-link" href="@Url.Action("Sessions", new { id = Model.UserId, page = pageNum })">@pageNum</a>
+                                    </li>
+                                }
+                            }
+
+                            if (Model.Pagination.HasNextPage)
+                            {
+                                <li class="page-item">
+                                    <a class="page-link" href="@Url.Action("Sessions", new { id = Model.UserId, page = Model.Pagination.CurrentPage + 1 })">
+                                        Next <i class="bi bi-chevron-right"></i>
+                                    </a>
+                                </li>
+                                <li class="page-item">
+                                    <a class="page-link" href="@Url.Action("Sessions", new { id = Model.UserId, page = Model.Pagination.TotalPages })">
+                                        <i class="bi bi-chevron-double-right"></i>
+                                    </a>
+                                </li>
+                            }
+                            else
+                            {
+                                <li class="page-item disabled">
+                                    <span class="page-link">Next <i class="bi bi-chevron-right"></i></span>
+                                </li>
+                                <li class="page-item disabled">
+                                    <span class="page-link"><i class="bi bi-chevron-double-right"></i></span>
+                                </li>
+                            }
+                        </ul>
+                    </nav>
+                </div>
+            </div>
+        }
+    }
+
+    <!-- Back Button -->
+    <div class="row mt-4">
+        <div class="col-12">
+            @Html.ActionLink("« Back to Search", "Index", null, new { @class = "btn btn-outline-secondary" })
+        </div>
+    </div>
+</div>
