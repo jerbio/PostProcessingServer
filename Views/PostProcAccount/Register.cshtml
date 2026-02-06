@@ -6,7 +6,7 @@
 <main aria-labelledby="title">
     <h2 id="title">@ViewBag.Title.</h2>
 
-    @using (Html.BeginForm("Register", "Account", FormMethod.Post, new { role = "form" }))
+    @using (Html.BeginForm("Register", "PostProcAccount", FormMethod.Post, new { role = "form" }))
     {
         @Html.AntiForgeryToken()
         <h4>Create a new account.</h4>

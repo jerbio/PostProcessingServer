@@ -82,6 +82,9 @@
     <Reference Include="Newtonsoft.Json.Bson, Version=1.0.0.0, Culture=neutral, PublicKeyToken=30ad4fe6b2a6aeed, processorArchitecture=MSIL">
       <HintPath>..\packages\Newtonsoft.Json.Bson.1.0.2\lib\net45\Newtonsoft.Json.Bson.dll</HintPath>
     </Reference>
+    <Reference Include="NodaTime, Version=3.3.0.0, Culture=neutral, PublicKeyToken=4226afe0d9b296d1, processorArchitecture=MSIL">
+      <HintPath>..\..\My24HourTimerWPF\packages\NodaTime.3.3.0\lib\netstandard2.0\NodaTime.dll</HintPath>
+    </Reference>
     <Reference Include="ScheduleAnalysis">
       <HintPath>..\..\My24HourTimerWPF\ScheduleAnalysis\bin\Debug\netstandard2.0\ScheduleAnalysis.dll</HintPath>
     </Reference>
@@ -165,7 +168,10 @@
     <Reference Include="Newtonsoft.Json">
       <HintPath>..\packages\Newtonsoft.Json.13.0.3\lib\net45\Newtonsoft.Json.dll</HintPath>
     </Reference>
-    <Reference Include="TilerCore, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null" />
+    <Reference Include="TilerCore, Version=1.0.0.0, Culture=neutral, processorArchitecture=MSIL">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>..\TilerFront\bin\TilerCore.dll</HintPath>
+    </Reference>
     <Reference Include="TilerElements">
       <HintPath>..\..\My24HourTimerWPF\TilerElements\bin\Debug\TilerElements.dll</HintPath>
     </Reference>
@@ -227,7 +233,7 @@
     <Compile Include="App_Start\RouteConfig.cs" />
     <Compile Include="App_Start\Startup.Auth.cs" />
     <Compile Include="App_Start\WebApiConfig.cs" />
-    <Compile Include="Controllers\AccountController.cs" />
+    <Compile Include="Controllers\PostProcAccountController.cs" />
     <Compile Include="Controllers\AnalysisJobController.cs" />
     <Compile Include="Controllers\ChatAuditController.cs" />
     <Compile Include="Controllers\ManageController.cs" />
@@ -236,6 +242,10 @@
     <Compile Include="Filters\ServerAuthenticationAttribute.cs" />
     <Compile Include="Global.asax.cs">
       <DependentUpon>Global.asax</DependentUpon>
+    </Compile>
+    <Compile Include="Migrations\202601310451469_databaseRefixed.cs" />
+    <Compile Include="Migrations\202601310451469_databaseRefixed.Designer.cs">
+      <DependentUpon>202601310451469_databaseRefixed.cs</DependentUpon>
     </Compile>
     <Compile Include="Migrations\Configuration.cs" />
     <Compile Include="Models\AccountViewModels.cs" />
@@ -249,6 +259,7 @@
     <Compile Include="Services\AnalysisLogControl.cs" />
     <Compile Include="Services\ChatAuditService.cs" />
     <Compile Include="Services\IChatAuditService.cs" />
+    <Compile Include="Services\JobNotificationService.cs" />
     <Compile Include="Startup.cs" />
     <Compile Include="Utilities\ConfigurationUtility.cs" />
   </ItemGroup>
@@ -304,18 +315,18 @@
     <Content Include="Views\Home\About.cshtml" />
     <Content Include="Views\Home\Contact.cshtml" />
     <Content Include="Views\Home\Index.cshtml" />
-    <Content Include="Views\Account\_ExternalLoginsListPartial.cshtml" />
-    <Content Include="Views\Account\ConfirmEmail.cshtml" />
-    <Content Include="Views\Account\ExternalLoginConfirmation.cshtml" />
-    <Content Include="Views\Account\ExternalLoginFailure.cshtml" />
-    <Content Include="Views\Account\ForgotPassword.cshtml" />
-    <Content Include="Views\Account\ForgotPasswordConfirmation.cshtml" />
-    <Content Include="Views\Account\Login.cshtml" />
-    <Content Include="Views\Account\Register.cshtml" />
-    <Content Include="Views\Account\ResetPassword.cshtml" />
-    <Content Include="Views\Account\ResetPasswordConfirmation.cshtml" />
-    <Content Include="Views\Account\SendCode.cshtml" />
-    <Content Include="Views\Account\VerifyCode.cshtml" />
+    <Content Include="Views\PostProcAccount\_ExternalLoginsListPartial.cshtml" />
+    <Content Include="Views\PostProcAccount\ConfirmEmail.cshtml" />
+    <Content Include="Views\PostProcAccount\ExternalLoginConfirmation.cshtml" />
+    <Content Include="Views\PostProcAccount\ExternalLoginFailure.cshtml" />
+    <Content Include="Views\PostProcAccount\ForgotPassword.cshtml" />
+    <Content Include="Views\PostProcAccount\ForgotPasswordConfirmation.cshtml" />
+    <Content Include="Views\PostProcAccount\Login.cshtml" />
+    <Content Include="Views\PostProcAccount\Register.cshtml" />
+    <Content Include="Views\PostProcAccount\ResetPassword.cshtml" />
+    <Content Include="Views\PostProcAccount\ResetPasswordConfirmation.cshtml" />
+    <Content Include="Views\PostProcAccount\SendCode.cshtml" />
+    <Content Include="Views\PostProcAccount\VerifyCode.cshtml" />
     <Content Include="Views\Manage\AddPhoneNumber.cshtml" />
     <Content Include="Views\Manage\ChangePassword.cshtml" />
     <Content Include="Views\Manage\Index.cshtml" />
@@ -371,6 +382,11 @@
       <Project>{5E86E44F-7CE0-482D-B3C5-059EF7032398}</Project>
       <Name>TilerFront</Name>
     </ProjectReference>
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="Migrations\202601310451469_databaseRefixed.resx">
+      <DependentUpon>202601310451469_databaseRefixed.cs</DependentUpon>
+    </EmbeddedResource>
   </ItemGroup>
   <PropertyGroup>
     <VisualStudioVersion Condition="'$(VisualStudioVersion)' == ''">10.0</VisualStudioVersion>

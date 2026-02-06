@@ -524,6 +524,7 @@ namespace PostProcessingServer.Services
                         .Include(o => o.TilerUser.WorkHoursRestrictionProfile_DB)
                         .Include(o => o.TilerUser.PersonalHoursRestrictionProfile_DB)
                         .Include(o => o.VibeSession)
+                        .Include(o => o.Actions)
                         .Include(o => o.TilerUser.ScheduleProfile_DB)
                         .Where(o => o.Id == vibeRequestId && o.TilerUserId == job.TilerUserId)
                         .FirstOrDefaultAsync()
@@ -536,9 +537,12 @@ namespace PostProcessingServer.Services
 
                     var tilerUser = vibeRequest.TilerUser;
 
-                    // Load all actions for this VibeRequest
+                    // Load all undisposed actions for this VibeRequest by querying ActionsAndPrompts
+                    string disposedStatus = ActionState.Disposed.ToString().ToLower();
                     List<TilerElements.VibeAction> preEmittedActions = await db.VibeActions
-                        .Where(o => o.VibeRequestId == vibeRequest.Id && o.TilerUser.IsAnonymous_DB == true)
+                        .Where(o => o.VibeRequestId == vibeRequest.Id 
+                            && o.ActionStatus_DB != disposedStatus
+                        )
                         .Include(o => o.VibeRequest.VibeSession.TilerUser)
                         .Include(o => o.VibeRequest.VibeSession.TilerUser.VibeProfile_DB)
                         .ToListAsync()
@@ -687,6 +691,7 @@ namespace PostProcessingServer.Services
                         string savedLogId = await bigDataControl.AddLogDocuments(splitLogs).ConfigureAwait(false);
                         System.Diagnostics.Trace.WriteLine($"Saved {splitLogs.Count} LogChange document(s) for job {job.Id}, parent ID: {savedLogId}");
 
+                        string createdPreviewId = null;
                         using (var writeDb = new TilerFront.Models.ApplicationDbContext())
                         {
                             var vibePreview = new TilerElements.VibePreview
@@ -697,9 +702,28 @@ namespace PostProcessingServer.Services
                                 TilerUserId = job.TilerUserId
                             };
                             vibePreview.Id = vibePreview.GenerateId();
+                            createdPreviewId = vibePreview.Id;
                             writeDb.VibePreviews.Add(vibePreview);
                             await writeDb.SaveChangesAsync().ConfigureAwait(false);
+                            foreach (var action in vibeRequest.Actions)
+                            {
+                                if (action.ActionStatus_DB != ActionState.Disposed.ToString().ToLower())
+                                {
+                                    var previewAction = vibePreview.addPreviewAction(action, action.EntityId, action.ActionEntityType);
+                                    writeDb.PreviewActions.Add(previewAction);
+                                }
+                            }
+                            await writeDb.SaveChangesAsync().ConfigureAwait(false);
                         }
+
+                        // Send WebSocket notification to connected client via TilerFront
+                        await JobNotificationService.Instance.NotifyPreviewCompletedAsync(
+                            userId: job.TilerUserId,
+                            vibeRequestId: vibeRequestId,
+                            previewId: createdPreviewId,
+                            scheduleDumpId: savedLogId,
+                            jobId: job.Id
+                        ).ConfigureAwait(false);
                     }
 
                     // Update job status with success

@@ -71,6 +71,21 @@ namespace PostProcessingServer.Utilities
         /// </summary>
         public const string EnablePerformanceMetricsKey = "EnablePerformanceMetrics";
 
+        /// <summary>
+        /// Configuration key for TilerFront base URL for job announcements
+        /// </summary>
+        public const string TilerFrontBaseUrlKey = "TilerFrontUrl";
+
+        /// <summary>
+        /// Configuration key for the internal API key used to authenticate with TilerFront
+        /// </summary>
+        public const string InternalJobApiKeyKey = "InternalJobApiKey";
+
+        /// <summary>
+        /// Configuration key to enable/disable job completion notifications
+        /// </summary>
+        public const string EnableJobNotificationsKey = "EnableJobNotifications";
+
         #endregion
 
         #region Delimiters and Separators

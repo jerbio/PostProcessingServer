@@ -30,34 +30,32 @@ namespace PostProcessingServer.Services
                     .CountAsync(u => u.IsAnonymous_DB == true)
                     .ConfigureAwait(false);
 
-                // Get paginated anonymous users ordered by creation time (newest first)
-                var users = await db.Users
-                    .Where(u => u.IsAnonymous_DB == true)
-                    .OrderByDescending(u => u.CreationTime_DB)
+                // Get paginated anonymous users with session counts using LEFT JOIN
+                var usersWithCounts = await (
+                    from u in db.Users
+                    where u.IsAnonymous_DB == true
+                    join s in db.VibeSessions on u.Id equals s.TilerUserId into sessions
+                    orderby u.CreationTime_DB descending
+                    select new
+                    {
+                        User = u,
+                        SessionCount = sessions.Count()
+                    })
                     .Skip((page - 1) * pageSize)
                     .Take(pageSize)
                     .ToListAsync()
                     .ConfigureAwait(false);
 
-                // Get session counts for each user
-                var userIds = users.Select(u => u.Id).ToList();
-                var sessionCounts = await db.VibeSessions
-                    .Where(s => userIds.Contains(s.TilerUserId))
-                    .GroupBy(s => s.TilerUserId)
-                    .Select(g => new { UserId = g.Key, Count = g.Count() })
-                    .ToDictionaryAsync(x => x.UserId, x => x.Count)
-                    .ConfigureAwait(false);
-
-                var userViewModels = users.Select(u => new UserSearchResultViewModel
+                var userViewModels = usersWithCounts.Select(x => new UserSearchResultViewModel
                 {
-                    UserId = u.Id,
-                    UserName = u.UserName ?? "Anonymous",
-                    IsAnonymous = u.IsAnonymous_DB ?? false,
-                    CreatedAt = u.CreationTime_DB.HasValue
-                        ? DateTimeOffset.FromUnixTimeMilliseconds(u.CreationTime_DB.Value)
+                    UserId = x.User.Id,
+                    UserName = x.User.UserName ?? "Anonymous",
+                    IsAnonymous = x.User.IsAnonymous_DB ?? false,
+                    CreatedAt = x.User.CreationTime_DB.HasValue
+                        ? DateTimeOffset.FromUnixTimeMilliseconds(x.User.CreationTime_DB.Value)
                         : (DateTimeOffset?)null,
-                    SessionCount = sessionCounts.ContainsKey(u.Id) ? sessionCounts[u.Id] : 0,
-                    TimeZone = u.TimeZone
+                    SessionCount = x.SessionCount,
+                    TimeZone = x.User.TimeZone
                 }).ToList();
 
                 return new AnonymousUserListViewModel
@@ -85,33 +83,34 @@ namespace PostProcessingServer.Services
 
             using (var db = new PostProcessorApplicationDbContext())
             {
-                var user = await db.Users
-                    .Where(u => u.Id == userId
-                    && u.IsAnonymous_DB == true
-                    )
+                // Get user with session count using LEFT JOIN in single query
+                var result = await (
+                    from u in db.Users
+                    where u.Id == userId && u.IsAnonymous_DB == true
+                    join s in db.VibeSessions on u.Id equals s.TilerUserId into sessions
+                    select new
+                    {
+                        User = u,
+                        SessionCount = sessions.Count()
+                    })
                     .FirstOrDefaultAsync()
                     .ConfigureAwait(false);
 
-                if (user == null)
+                if (result == null)
                 {
                     return null;
                 }
 
-                // Get session count for this user
-                var sessionCount = await db.VibeSessions
-                    .CountAsync(s => s.TilerUserId == userId)
-                    .ConfigureAwait(false);
-
                 return new UserSearchResultViewModel
                 {
-                    UserId = user.Id,
-                    UserName = user.UserName ?? "Anonymous",
-                    IsAnonymous = user.IsAnonymous_DB ?? false,
-                    CreatedAt = user.CreationTime_DB.HasValue 
-                        ? DateTimeOffset.FromUnixTimeMilliseconds(user.CreationTime_DB.Value) 
+                    UserId = result.User.Id,
+                    UserName = result.User.UserName ?? "Anonymous",
+                    IsAnonymous = result.User.IsAnonymous_DB ?? false,
+                    CreatedAt = result.User.CreationTime_DB.HasValue 
+                        ? DateTimeOffset.FromUnixTimeMilliseconds(result.User.CreationTime_DB.Value) 
                         : (DateTimeOffset?)null,
-                    SessionCount = sessionCount,
-                    TimeZone = user.TimeZone
+                    SessionCount = result.SessionCount,
+                    TimeZone = result.User.TimeZone
                 };
             }
         }
@@ -148,42 +147,34 @@ namespace PostProcessingServer.Services
                     .CountAsync(s => s.TilerUserId == userId)
                     .ConfigureAwait(false);
 
-                // Get paginated sessions ordered by creation time (newest first)
-                var sessions = await db.VibeSessions
-                    .Where(s => s.TilerUserId == userId)
-                    .OrderByDescending(s => s.CreationTimeInMs)
+                // Get paginated sessions with message counts and last message using LEFT JOINs
+                var sessionsWithData = await (
+                    from s in db.VibeSessions
+                    where s.TilerUserId == userId
+                    join p in db.VibePrompts on s.Id equals p.SessionId into prompts
+                    orderby s.CreationTimeInMs descending
+                    select new
+                    {
+                        Session = s,
+                        MessageCount = prompts.Count(),
+                        LastMessagePreview = prompts
+                            .OrderByDescending(m => m.CreationTimeInMs)
+                            .Select(m => m.Prompt)
+                            .FirstOrDefault()
+                    })
                     .Skip((page - 1) * pageSize)
                     .Take(pageSize)
                     .ToListAsync()
                     .ConfigureAwait(false);
 
-                // Get message counts for each session
-                var sessionIds = sessions.Select(s => s.Id).ToList();
-                var messageCounts = await db.VibePrompts
-                    .Where(p => sessionIds.Contains(p.SessionId))
-                    .GroupBy(p => p.SessionId)
-                    .Select(g => new { SessionId = g.Key, Count = g.Count() })
-                    .ToDictionaryAsync(x => x.SessionId, x => x.Count)
-                    .ConfigureAwait(false);
-
-                // Get last message preview for each session
-                var lastMessages = await db.VibePrompts
-                    .Where(p => sessionIds.Contains(p.SessionId))
-                    .GroupBy(p => p.SessionId)
-                    .Select(g => g.OrderByDescending(p => p.CreationTimeInMs).FirstOrDefault())
-                    .ToDictionaryAsync(p => p.SessionId, p => p.Prompt)
-                    .ConfigureAwait(false);
-
-                var sessionViewModels = sessions.Select(s => new ChatSessionSummaryViewModel
+                var sessionViewModels = sessionsWithData.Select(x => new ChatSessionSummaryViewModel
                 {
-                    SessionId = s.Id,
-                    SessionTitle = s.SessionTitle ?? "Untitled Session",
-                    CreatedAt = DateTimeOffset.FromUnixTimeMilliseconds(s.CreationTimeInMs),
-                    MessageCount = messageCounts.ContainsKey(s.Id) ? messageCounts[s.Id] : 0,
-                    Language = s.Language ?? "en",
-                    LastMessagePreview = lastMessages.ContainsKey(s.Id) 
-                        ? TruncateString(lastMessages[s.Id], 100) 
-                        : null
+                    SessionId = x.Session.Id,
+                    SessionTitle = x.Session.SessionTitle ?? "Untitled Session",
+                    CreatedAt = DateTimeOffset.FromUnixTimeMilliseconds(x.Session.CreationTimeInMs),
+                    MessageCount = x.MessageCount,
+                    Language = x.Session.Language ?? "en",
+                    LastMessagePreview = TruncateString(x.LastMessagePreview, 100)
                 }).ToList();
 
                 return new ChatSessionListViewModel
@@ -217,22 +208,25 @@ namespace PostProcessingServer.Services
 
             using (var db = new PostProcessorApplicationDbContext())
             {
-                // Get session with user verification (must be anonymous)
-                var session = await db.VibeSessions
-                    .Include(s => s.TilerUser)
-                    .Where(s => s.Id == sessionId && s.TilerUser.IsAnonymous_DB == true)
+                // Get session with user and message count using JOIN in single query
+                var sessionData = await (
+                    from s in db.VibeSessions
+                    join u in db.Users on s.TilerUserId equals u.Id
+                    where s.Id == sessionId && u.IsAnonymous_DB == true
+                    join p in db.VibePrompts on s.Id equals p.SessionId into prompts
+                    select new
+                    {
+                        Session = s,
+                        User = u,
+                        TotalMessages = prompts.Count()
+                    })
                     .FirstOrDefaultAsync()
                     .ConfigureAwait(false);
 
-                if (session == null)
+                if (sessionData == null)
                 {
                     return null;
                 }
-
-                // Get total message count for pagination
-                var totalMessages = await db.VibePrompts
-                    .CountAsync(p => p.SessionId == sessionId)
-                    .ConfigureAwait(false);
 
                 // Get paginated messages ordered by creation time (oldest first for conversation flow)
                 var messages = await db.VibePrompts
@@ -257,18 +251,18 @@ namespace PostProcessingServer.Services
 
                 return new ChatDetailViewModel
                 {
-                    SessionId = session.Id,
-                    SessionTitle = session.SessionTitle ?? "Untitled Session",
-                    UserId = session.TilerUserId,
-                    UserName = session.TilerUser?.UserName ?? "Anonymous",
-                    SessionCreatedAt = DateTimeOffset.FromUnixTimeMilliseconds(session.CreationTimeInMs),
-                    Language = session.Language ?? "en",
+                    SessionId = sessionData.Session.Id,
+                    SessionTitle = sessionData.Session.SessionTitle ?? "Untitled Session",
+                    UserId = sessionData.Session.TilerUserId,
+                    UserName = sessionData.User?.UserName ?? "Anonymous",
+                    SessionCreatedAt = DateTimeOffset.FromUnixTimeMilliseconds(sessionData.Session.CreationTimeInMs),
+                    Language = sessionData.Session.Language ?? "en",
                     Messages = messageViewModels,
                     Pagination = new PaginationViewModel
                     {
                         CurrentPage = page,
                         PageSize = pageSize,
-                        TotalItems = totalMessages
+                        TotalItems = sessionData.TotalMessages
                     }
                 };
             }
@@ -286,9 +280,13 @@ namespace PostProcessingServer.Services
 
             using (var db = new PostProcessorApplicationDbContext())
             {
-                return await db.VibeSessions
-                    .Include(s => s.TilerUser)
-                    .AnyAsync(s => s.Id == sessionId && s.TilerUser.IsAnonymous_DB == true)
+                // Use JOIN instead of Include for explicit join
+                return await (
+                    from s in db.VibeSessions
+                    join u in db.Users on s.TilerUserId equals u.Id
+                    where s.Id == sessionId && u.IsAnonymous_DB == true
+                    select s.Id)
+                    .AnyAsync()
                     .ConfigureAwait(false);
             }
         }
