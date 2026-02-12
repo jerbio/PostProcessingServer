@@ -14,6 +14,10 @@ namespace PostProcessingServer.Services
         public AnalysisLogControl(TilerUser User, TilerDbContext dbContext, int cacheContextCount = 10)
             : base(User, dbContext, cacheContextCount)
         {
+            if(User != null && User.ScheduleProfile!= null && User.ScheduleProfile.EvaluationUpdateId.isNot_NullEmptyOrWhiteSpace())
+            {
+                transactionValidator = User.ScheduleProfile.GetEvaluationNonceFromEvaluationId(User.ScheduleProfile.EvaluationUpdateId);
+            }
         }
 
         protected override List<Tuple<SqlParameter, string>> generateCalEventSqlParameters(CalendarEvent eachCalEvent, List<Tuple<SqlParameter, string>> loopQuery, string EvaluationId, int index, string calSqlPrefix, HashSet<DataRetrivalOption> allRetrievalOptions, bool allOptionsPersisted, List<CalendarEvent> calEventList, int calIndex, HashSet<string> relatedTilerIds)
