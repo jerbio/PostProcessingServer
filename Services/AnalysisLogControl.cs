@@ -17,6 +17,10 @@ namespace PostProcessingServer.Services
             if(User != null && User.ScheduleProfile!= null && User.ScheduleProfile.EvaluationUpdateId.isNot_NullEmptyOrWhiteSpace())
             {
                 transactionValidator = User.ScheduleProfile.GetEvaluationNonceFromEvaluationId(User.ScheduleProfile.EvaluationUpdateId);
+                System.Diagnostics.Trace.WriteLine($"Initialized AnalysisLogControl with transactionValidator: {transactionValidator}");
+            } else
+            {
+                System.Diagnostics.Trace.WriteLine($"Initialized AnalysisLogControl without transactionValidator due to missing EvaluationUpdateId");
             }
         }
 

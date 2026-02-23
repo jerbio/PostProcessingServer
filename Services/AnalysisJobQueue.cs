@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using PostProcessingServer.Models;
 using TilerElements;
 using TilerCrossServerResources;
+using System.Data.Entity.Migrations;
 
 namespace PostProcessingServer.Services
 {
@@ -95,7 +96,7 @@ namespace PostProcessingServer.Services
                 }
                 catch (Exception ex)
                 {
-                    System.Diagnostics.Trace.TraceError($"Failed to load incomplete jobs from database: {ex.Message}\n{ex.StackTrace}");
+                    System.Diagnostics.Trace.TraceError($"Failed to load incomplete jobs from database: {ex}");
                 }
 
                 _isInitialized = true;
@@ -124,13 +125,13 @@ namespace PostProcessingServer.Services
             {
                 using (var db = new PostProcessingServer.Models.PostProcessorApplicationDbContext())
                 {
-                    db.AnalysisJobs.Add(job);
+                    db.AnalysisJobs.AddOrUpdate(job);
                     db.SaveChanges();
                 }
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Trace.TraceError($"Failed to persist new job {job.Id}: {ex.Message}");
+                System.Diagnostics.Trace.TraceError($"Failed to persist new job {job.Id}: {ex}");
             }
             
             // Signal that a new item is available
@@ -178,7 +179,7 @@ namespace PostProcessingServer.Services
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Trace.TraceError($"Failed to load job {jobId} from database: {ex.Message}");
+                System.Diagnostics.Trace.TraceError($"Failed to load job {jobId} from database: {ex}");
             }
 
             return null;
@@ -244,7 +245,7 @@ namespace PostProcessingServer.Services
                 }
                 catch (Exception ex)
                 {
-                    System.Diagnostics.Trace.TraceError($"Failed to persist job status update for {jobId}: {ex.Message}");
+                    System.Diagnostics.Trace.TraceError($"Failed to persist job status update for {jobId}: {ex}");
                 }
             }
         }
@@ -291,7 +292,7 @@ namespace PostProcessingServer.Services
                 }
                 catch (Exception ex)
                 {
-                    System.Diagnostics.Trace.TraceError($"Failed to remove old jobs from database: {ex.Message}");
+                    System.Diagnostics.Trace.TraceError($"Failed to remove old jobs from database: {ex}");
                 }
             }
 
