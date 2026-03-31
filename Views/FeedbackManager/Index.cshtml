@@ -1,0 +1,220 @@
+@model PostProcessingServer.Models.FeedbackListViewModel
+@{
+    ViewBag.Title = "Feedback Manager";
+}
+
+<div class="container mt-4">
+    <div class="row mb-3">
+        <div class="col-12 d-flex justify-content-between align-items-center">
+            <h2 class="mb-0"><i class="bi bi-clipboard2-pulse"></i> Feedback Manager</h2>
+            @if (ViewBag.CurrentUser != null)
+            {
+                <div class="d-flex align-items-center">
+                    <span class="badge bg-secondary me-2">
+                        <i class="bi bi-person-circle"></i> @ViewBag.CurrentUser
+                    </span>
+                    @using (Html.BeginForm("Logout", "ChatAudit", FormMethod.Post, new { @class = "d-inline" }))
+                    {
+                        @Html.AntiForgeryToken()
+                        <button type="submit" class="btn btn-outline-danger btn-sm">
+                            <i class="bi bi-box-arrow-right"></i> Logout
+                        </button>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-12">
+            <p class="text-muted">View, triage, and link user feedback submissions. Filter by category or status to focus on specific items.</p>
+            <hr />
+        </div>
+    </div>
+
+    @if (TempData["ErrorMessage"] != null)
+    {
+        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+            @TempData["ErrorMessage"]
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+    }
+
+    @if (TempData["SuccessMessage"] != null)
+    {
+        <div class="alert alert-success alert-dismissible fade show" role="alert">
+            @TempData["SuccessMessage"]
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+    }
+
+    <!-- Filters -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header bg-dark text-white">
+                    <i class="bi bi-funnel"></i> Filters
+                </div>
+                <div class="card-body">
+                    @using (Html.BeginForm("Index", "FeedbackManager", FormMethod.Get, new { @class = "row g-3 align-items-end" }))
+                    {
+                        <div class="col-md-3">
+                            <label class="form-label">Category</label>
+                            <select name="category" class="form-select">
+                                <option value="">All Categories</option>
+                                <option value="Bug" selected="@(Model.FilterCategory == "Bug")">Bug</option>
+                                <option value="Feature" selected="@(Model.FilterCategory == "Feature")">Feature</option>
+                                <option value="Enhancement" selected="@(Model.FilterCategory == "Enhancement")">Enhancement</option>
+                                <option value="General" selected="@(Model.FilterCategory == "General")">General</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Status</label>
+                            <select name="status" class="form-select">
+                                <option value="">All Statuses</option>
+                                <option value="Open" selected="@(Model.FilterStatus == "Open")">Open</option>
+                                <option value="Acknowledged" selected="@(Model.FilterStatus == "Acknowledged")">Acknowledged</option>
+                                <option value="InProgress" selected="@(Model.FilterStatus == "InProgress")">In Progress</option>
+                                <option value="Resolved" selected="@(Model.FilterStatus == "Resolved")">Resolved</option>
+                                <option value="Closed" selected="@(Model.FilterStatus == "Closed")">Closed</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Search</label>
+                            <input type="text" name="search" class="form-control" placeholder="Search title or description..." value="@Model.SearchQuery" />
+                        </div>
+                        <div class="col-md-2">
+                            <button type="submit" class="btn btn-primary w-100">
+                                <i class="bi bi-search"></i> Filter
+                            </button>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Stats Row -->
+    <div class="row mb-3">
+        <div class="col-12">
+            <span class="text-muted">
+                Showing @Model.Feedbacks.Count of @Model.Pagination.TotalItems total feedback items
+                (Page @Model.Pagination.CurrentPage of @Math.Max(1, Model.Pagination.TotalPages))
+            </span>
+        </div>
+    </div>
+
+    <!-- Feedback Table -->
+    <div class="row">
+        <div class="col-12">
+            @if (Model.Feedbacks.Count > 0)
+            {
+                <div class="table-responsive">
+                    <table class="table table-hover table-striped">
+                        <thead class="table-dark">
+                            <tr>
+                                <th>Category</th>
+                                <th>Title</th>
+                                <th>User</th>
+                                <th>Status</th>
+                                <th>Ticket</th>
+                                <th>Linked</th>
+                                <th>Created</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var feedback in Model.Feedbacks)
+                            {
+                                <tr>
+                                    <td>
+                                        <span class="badge @feedback.GetCategoryBadgeClass()">
+                                            <i class="@feedback.GetCategoryIcon()"></i> @feedback.Category
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <a href="@Url.Action("Detail", new { id = feedback.Id })">
+                                            @(feedback.Title.Length > 60 ? feedback.Title.Substring(0, 57) + "..." : feedback.Title)
+                                        </a>
+                                    </td>
+                                    <td><small class="text-muted">@feedback.UserName</small></td>
+                                    <td>
+                                        <span class="badge @feedback.GetStatusBadgeClass()">@feedback.Status</span>
+                                    </td>
+                                    <td>
+                                        @if (!string.IsNullOrEmpty(feedback.ExternalTicketId))
+                                        {
+                                            if (!string.IsNullOrEmpty(feedback.ExternalTicketUrl))
+                                            {
+                                                <a href="@feedback.ExternalTicketUrl" target="_blank" rel="noopener noreferrer" class="text-decoration-none">
+                                                    <i class="bi bi-box-arrow-up-right"></i> @feedback.ExternalTicketId
+                                                </a>
+                                            }
+                                            else
+                                            {
+                                                <span>@feedback.ExternalTicketId</span>
+                                            }
+                                        }
+                                        else
+                                        {
+                                            <span class="text-muted">—</span>
+                                        }
+                                    </td>
+                                    <td>
+                                        @if (!string.IsNullOrEmpty(feedback.LinkedFeedbackId))
+                                        {
+                                            <a href="@Url.Action("Detail", new { id = feedback.LinkedFeedbackId })" class="text-decoration-none">
+                                                <i class="bi bi-link-45deg"></i> Linked
+                                            </a>
+                                        }
+                                        else
+                                        {
+                                            <span class="text-muted">—</span>
+                                        }
+                                    </td>
+                                    <td><small>@feedback.CreatedAt.ToString("yyyy-MM-dd HH:mm")</small></td>
+                                    <td>
+                                        <a href="@Url.Action("Detail", new { id = feedback.Id })" class="btn btn-sm btn-outline-primary" title="View Details">
+                                            <i class="bi bi-eye"></i>
+                                        </a>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Pagination -->
+                @if (Model.Pagination.TotalPages > 1)
+                {
+                    <nav aria-label="Feedback pagination">
+                        <ul class="pagination justify-content-center">
+                            <li class="page-item @(!Model.Pagination.HasPreviousPage ? "disabled" : "")">
+                                <a class="page-link" href="@Url.Action("Index", new { page = Model.Pagination.CurrentPage - 1, category = Model.FilterCategory, status = Model.FilterStatus, search = Model.SearchQuery })">
+                                    <i class="bi bi-chevron-left"></i> Previous
+                                </a>
+                            </li>
+                            @foreach (var pageNum in Model.Pagination.GetPageRange(7))
+                            {
+                                <li class="page-item @(pageNum == Model.Pagination.CurrentPage ? "active" : "")">
+                                    <a class="page-link" href="@Url.Action("Index", new { page = pageNum, category = Model.FilterCategory, status = Model.FilterStatus, search = Model.SearchQuery })">@pageNum</a>
+                                </li>
+                            }
+                            <li class="page-item @(!Model.Pagination.HasNextPage ? "disabled" : "")">
+                                <a class="page-link" href="@Url.Action("Index", new { page = Model.Pagination.CurrentPage + 1, category = Model.FilterCategory, status = Model.FilterStatus, search = Model.SearchQuery })">
+                                    Next <i class="bi bi-chevron-right"></i>
+                                </a>
+                            </li>
+                        </ul>
+                    </nav>
+                }
+            }
+            else
+            {
+                <div class="alert alert-info text-center">
+                    <i class="bi bi-inbox"></i> No feedback found matching your criteria.
+                </div>
+            }
+        </div>
+    </div>
+</div>

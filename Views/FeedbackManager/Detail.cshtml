@@ -1,0 +1,295 @@
+@model PostProcessingServer.Models.FeedbackDetailViewModel
+@{
+    ViewBag.Title = "Feedback Detail";
+    var fb = Model.Feedback;
+}
+
+<div class="container mt-4">
+    <div class="row mb-3">
+        <div class="col-12 d-flex justify-content-between align-items-center">
+            <div>
+                <a href="@Url.Action("Index")" class="btn btn-outline-secondary btn-sm me-2">
+                    <i class="bi bi-arrow-left"></i> Back to List
+                </a>
+                <h2 class="d-inline mb-0">Feedback Detail</h2>
+            </div>
+            @if (ViewBag.CurrentUser != null)
+            {
+                <span class="badge bg-secondary">
+                    <i class="bi bi-person-circle"></i> @ViewBag.CurrentUser
+                </span>
+            }
+        </div>
+    </div>
+
+    @if (TempData["ErrorMessage"] != null)
+    {
+        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+            @TempData["ErrorMessage"]
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+    }
+
+    @if (TempData["SuccessMessage"] != null)
+    {
+        <div class="alert alert-success alert-dismissible fade show" role="alert">
+            @TempData["SuccessMessage"]
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+    }
+
+    <div class="row">
+        <!-- Feedback Info -->
+        <div class="col-lg-8">
+            <div class="card mb-4">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <div>
+                        <span class="badge @fb.GetCategoryBadgeClass() me-2">
+                            <i class="@fb.GetCategoryIcon()"></i> @fb.Category
+                        </span>
+                        <span class="badge @fb.GetStatusBadgeClass()">@fb.Status</span>
+                    </div>
+                    <small class="text-muted">ID: <code>@fb.Id</code></small>
+                </div>
+                <div class="card-body">
+                    <h4>@fb.Title</h4>
+                    <hr />
+                    <div class="mb-3">
+                        @if (!string.IsNullOrEmpty(fb.Description))
+                        {
+                            <p class="mb-0" style="white-space: pre-wrap;">@fb.Description</p>
+                        }
+                        else
+                        {
+                            <p class="text-muted mb-0"><em>No description provided.</em></p>
+                        }
+                    </div>
+                    <hr />
+                    <dl class="row mb-0">
+                        <dt class="col-sm-3">Submitted by:</dt>
+                        <dd class="col-sm-9">@fb.UserName <small class="text-muted">(@fb.UserId)</small></dd>
+
+                        <dt class="col-sm-3">Created:</dt>
+                        <dd class="col-sm-9">@fb.CreatedAt.ToString("yyyy-MM-dd HH:mm:ss UTC")</dd>
+
+                        @if (fb.UpdatedAt.HasValue)
+                        {
+                            <dt class="col-sm-3">Last Updated:</dt>
+                            <dd class="col-sm-9">@fb.UpdatedAt.Value.ToString("yyyy-MM-dd HH:mm:ss UTC")</dd>
+                        }
+
+                        @if (!string.IsNullOrEmpty(fb.ExternalTicketId))
+                        {
+                            <dt class="col-sm-3">Ticket:</dt>
+                            <dd class="col-sm-9">
+                                @if (!string.IsNullOrEmpty(fb.ExternalTicketUrl))
+                                {
+                                    <a href="@fb.ExternalTicketUrl" target="_blank" rel="noopener noreferrer">
+                                        <i class="bi bi-box-arrow-up-right"></i> @fb.ExternalTicketId
+                                    </a>
+                                }
+                                else
+                                {
+                                    @fb.ExternalTicketId
+                                }
+                            </dd>
+                        }
+                    </dl>
+
+                    @if (!string.IsNullOrEmpty(fb.DeveloperNotes))
+                    {
+                        <hr />
+                        <h6><i class="bi bi-journal-text"></i> Developer Notes</h6>
+                        <div class="p-3 bg-light rounded" style="white-space: pre-wrap;">@fb.DeveloperNotes</div>
+                    }
+                </div>
+            </div>
+
+            <!-- Linked Feedbacks -->
+            <div class="card mb-4">
+                <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
+                    <span><i class="bi bi-link-45deg"></i> Linked Feedback</span>
+                    <span class="badge bg-light text-dark">@Model.LinkedFeedbacks.Count</span>
+                </div>
+                <div class="card-body">
+                    @if (!string.IsNullOrEmpty(fb.LinkedFeedbackId))
+                    {
+                        <div class="mb-3">
+                            <strong>Linked to:</strong>
+                            <a href="@Url.Action("Detail", new { id = fb.LinkedFeedbackId })">@fb.LinkedFeedbackId</a>
+                            @using (Html.BeginForm("Unlink", "FeedbackManager", new { id = fb.Id }, FormMethod.Post, new { @class = "d-inline" }))
+                            {
+                                @Html.AntiForgeryToken()
+                                <button type="submit" class="btn btn-sm btn-outline-danger ms-2" title="Remove link">
+                                    <i class="bi bi-x-circle"></i> Unlink
+                                </button>
+                            }
+                        </div>
+                    }
+
+                    @if (Model.LinkedFeedbacks.Count > 0)
+                    {
+                        <div class="table-responsive">
+                            <table class="table table-sm table-hover">
+                                <thead>
+                                    <tr>
+                                        <th>Category</th>
+                                        <th>Title</th>
+                                        <th>Status</th>
+                                        <th>User</th>
+                                        <th></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var linked in Model.LinkedFeedbacks)
+                                    {
+                                        <tr>
+                                            <td><span class="badge @linked.GetCategoryBadgeClass()">@linked.Category</span></td>
+                                            <td>
+                                                <a href="@Url.Action("Detail", new { id = linked.Id })">@linked.Title</a>
+                                            </td>
+                                            <td><span class="badge @linked.GetStatusBadgeClass()">@linked.Status</span></td>
+                                            <td><small>@linked.UserName</small></td>
+                                            <td><small class="text-muted">@linked.CreatedAt.ToString("yyyy-MM-dd")</small></td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                    else if (string.IsNullOrEmpty(fb.LinkedFeedbackId))
+                    {
+                        <p class="text-muted mb-0">No linked feedback items.</p>
+                    }
+
+                    <!-- Link Feedback Form -->
+                    <hr />
+                    <h6>Link to another feedback</h6>
+                    @using (Html.BeginForm("Link", "FeedbackManager", FormMethod.Post))
+                    {
+                        @Html.AntiForgeryToken()
+                        <input type="hidden" name="FeedbackId" value="@fb.Id" />
+                        <div class="input-group">
+                            <input type="text" name="LinkedFeedbackId" class="form-control" id="linkSearchInput"
+                                   placeholder="Enter feedback ID to link..." autocomplete="off" />
+                            <button type="submit" class="btn btn-outline-primary">
+                                <i class="bi bi-link"></i> Link
+                            </button>
+                        </div>
+                        <div id="linkSearchResults" class="list-group mt-1" style="display:none; position:absolute; z-index:1000; width:calc(100% - 2rem);"></div>
+                    }
+                </div>
+            </div>
+        </div>
+
+        <!-- Triage Panel -->
+        <div class="col-lg-4">
+            <div class="card mb-4">
+                <div class="card-header bg-warning text-dark">
+                    <i class="bi bi-gear-fill"></i> Triage & Manage
+                </div>
+                <div class="card-body">
+                    @using (Html.BeginForm("Triage", "FeedbackManager", FormMethod.Post))
+                    {
+                        @Html.AntiForgeryToken()
+                        <input type="hidden" name="FeedbackId" value="@fb.Id" />
+
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Status</label>
+                            <select name="Status" class="form-select">
+                                <option value="">— No change —</option>
+                                <option value="Open" selected="@(fb.Status == "Open")">Open</option>
+                                <option value="Acknowledged" selected="@(fb.Status == "Acknowledged")">Acknowledged</option>
+                                <option value="InProgress" selected="@(fb.Status == "InProgress")">In Progress</option>
+                                <option value="Resolved" selected="@(fb.Status == "Resolved")">Resolved</option>
+                                <option value="Closed" selected="@(fb.Status == "Closed")">Closed</option>
+                            </select>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">External Ticket ID</label>
+                            <input type="text" name="ExternalTicketId" class="form-control" value="@fb.ExternalTicketId"
+                                   placeholder="e.g., JIRA-1234, GH-567" />
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">External Ticket URL</label>
+                            <input type="url" name="ExternalTicketUrl" class="form-control" value="@fb.ExternalTicketUrl"
+                                   placeholder="https://..." />
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Developer Notes</label>
+                            <textarea name="DeveloperNotes" class="form-control" rows="5"
+                                      placeholder="Internal notes for debugging, context, etc.">@fb.DeveloperNotes</textarea>
+                        </div>
+
+                        <div class="d-grid">
+                            <button type="submit" class="btn btn-warning">
+                                <i class="bi bi-save"></i> Save Triage
+                            </button>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section scripts {
+    <script>
+        // Simple search-as-you-type for linking feedbacks
+        (function () {
+            var input = document.getElementById('linkSearchInput');
+            var resultsDiv = document.getElementById('linkSearchResults');
+            var debounceTimer;
+            var currentFeedbackId = '@fb.Id';
+
+            if (!input || !resultsDiv) return;
+
+            input.addEventListener('input', function () {
+                clearTimeout(debounceTimer);
+                var query = input.value.trim();
+                if (query.length < 2) {
+                    resultsDiv.style.display = 'none';
+                    return;
+                }
+                debounceTimer = setTimeout(function () {
+                    var xhr = new XMLHttpRequest();
+                    xhr.open('GET', '@Url.Action("Search")' + '?query=' + encodeURIComponent(query), true);
+                    xhr.onload = function () {
+                        if (xhr.status === 200) {
+                            var items = JSON.parse(xhr.responseText);
+                            resultsDiv.innerHTML = '';
+                            if (items.length === 0) {
+                                resultsDiv.style.display = 'none';
+                                return;
+                            }
+                            items.forEach(function (item) {
+                                if (item.Id === currentFeedbackId) return;
+                                var a = document.createElement('a');
+                                a.href = '#';
+                                a.className = 'list-group-item list-group-item-action small';
+                                a.innerHTML = '<strong>' + item.Category + '</strong>: ' + item.Title + ' <span class="text-muted">(' + item.Id.substring(0, 8) + '...)</span>';
+                                a.addEventListener('click', function (e) {
+                                    e.preventDefault();
+                                    input.value = item.Id;
+                                    resultsDiv.style.display = 'none';
+                                });
+                                resultsDiv.appendChild(a);
+                            });
+                            resultsDiv.style.display = 'block';
+                        }
+                    };
+                    xhr.send();
+                }, 300);
+            });
+
+            document.addEventListener('click', function (e) {
+                if (!resultsDiv.contains(e.target) && e.target !== input) {
+                    resultsDiv.style.display = 'none';
+                }
+            });
+        })();
+    </script>
+}

@@ -3,6 +3,7 @@ using System.Security.Claims;
 using System.Threading.Tasks;
 using Microsoft.AspNet.Identity;
 using Microsoft.AspNet.Identity.EntityFramework;
+using TilerFront.DatabaseModels;
 
 namespace PostProcessingServer.Models
 {
@@ -29,6 +30,11 @@ namespace PostProcessingServer.Models
         /// DbSet for tracking analysis jobs in the database
         /// </summary>
         public virtual DbSet<AnalysisJob> AnalysisJobs { get; set; }
+
+        /// <summary>
+        /// DbSet for user feedback entries
+        /// </summary>
+        public virtual DbSet<UserFeedback> UserFeedbacks { get; set; }
 
         protected override void OnModelCreating(DbModelBuilder modelBuilder)
         {
