@@ -25,22 +25,29 @@ namespace PostProcessingServer.Models
         public TilerUser TilerUser { get; set; }
 
 
-        // Override indexes from base class for PostProcessingServer-specific indexing
+        // Override indexes from base class for PostProcessingServer-specific
+        // indexing. The enum-typed JobType/Status are [NotMapped] proxies on
+        // the base; the actual columns are JobType_DB / Status_DB strings, so
+        // indexes belong on the string columns.
         [Required]
+        [StringLength(50)]
+        [Column("JobType")]
         [Index("IX_AnalysisJob_JobType", 1)]
-        public new AnalysisJobType JobType 
-        { 
-            get => base.JobType; 
-            set => base.JobType = value; 
+        public override string JobType_DB
+        {
+            get => base.JobType_DB;
+            set => base.JobType_DB = value;
         }
 
         [Required]
+        [StringLength(50)]
+        [Column("Status")]
         [Index("IX_AnalysisJob_Status", 1)]
         [Index("IX_AnalysisJob_Status_CreatedAt", 1)]
-        public new AnalysisJobStatus Status 
-        { 
-            get => base.Status; 
-            set => base.Status = value; 
+        public override string Status_DB
+        {
+            get => base.Status_DB;
+            set => base.Status_DB = value;
         }
 
         [Required]

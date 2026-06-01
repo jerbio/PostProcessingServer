@@ -52,10 +52,15 @@ namespace PostProcessingServer.Services
                 {
                     using (var db = new PostProcessingServer.Models.PostProcessorApplicationDbContext())
                     {
-                        // Find jobs that were queued or processing when the server shut down
+                        // Find jobs that were queued or processing when the
+                        // server shut down. The DB column is the string
+                        // Status_DB; compare against ToString() of the enum
+                        // values so EF6 translates this to a column = literal
+                        // SQL filter.
+                        string queuedDb = AnalysisJobStatus.Queued.ToString();
+                        string processingDb = AnalysisJobStatus.Processing.ToString();
                         var incompleteJobs = db.AnalysisJobs
-                            .Where(j => j.Status == AnalysisJobStatus.Queued || 
-                                       j.Status == AnalysisJobStatus.Processing)
+                            .Where(j => j.Status_DB == queuedDb || j.Status_DB == processingDb)
                             .OrderBy(j => j.CreatedAt)
                             .ToList();
 
@@ -77,7 +82,7 @@ namespace PostProcessingServer.Services
 
                         // Update all processing jobs in database to queued
                         var processingJobs = db.AnalysisJobs
-                            .Where(j => j.Status == AnalysisJobStatus.Processing)
+                            .Where(j => j.Status_DB == processingDb)
                             .ToList();
 
                         foreach (var job in processingJobs)

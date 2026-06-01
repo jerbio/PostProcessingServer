@@ -14,6 +14,7 @@ using System.Web.Hosting;
 using TilerElements;
 using TilerFront;
 using TilerCrossServerResources;
+using BigDataTiler;
 
 namespace PostProcessingServer.Services
 {
@@ -435,7 +436,7 @@ namespace PostProcessingServer.Services
                     ReferenceNow referenceNow = new ReferenceNow(Utility.now(), tilerUser.EndOfDay, tilerUser, tilerUser.TimeZone_DB);
 
                     // Initialize LogControl
-                    var logControl = new AnalysisLogControl(tilerUser, db, cacheContextCount: 0);
+                    var logControl = new AnalysisLogControl(tilerUser, db, cacheContextCount: 2);
                     
                     // Get the request location
                     TilerElements.Location requestLocation = requestData.getCurrentLocation();
@@ -500,20 +501,28 @@ namespace PostProcessingServer.Services
         /// </summary>
         private async Task ProcessRequestPreviewAsync(AnalysisJob job, CancellationToken cancellationToken)
         {
+            // Parse the request data up front so we can fail fast before doing
+            // any DB work. Anything thrown here propagates without ever
+            // touching a VibePreview row.
+            var requestDataJson = Newtonsoft.Json.Linq.JObject.Parse(job.RequestData);
+            string vibeRequestId = requestDataJson["VibeRequestId"]?.ToString();
+            var executeVibeData = requestDataJson["ExecuteVibeData"]?.ToObject<TilerFront.Models.ExecuteVibeModel>();
+
+            if (string.IsNullOrWhiteSpace(vibeRequestId))
+            {
+                throw new ArgumentException("Invalid request data for ProcessRequest job: VibeRequestId is required");
+            }
+
+            // The preview row is the ledger of the job's progress. Create or
+            // reuse it BEFORE any heavy work so observers (Accept endpoint,
+            // clients polling state) see the request actively producing a
+            // preview, and so a crash mid-processing leaves a row we can
+            // mark Failed in the catch handler.
+            string previewId = await EnsureQueuedPreviewAsync(vibeRequestId, job).ConfigureAwait(false);
+
             try
             {
-                // Parse the request data - expecting a JSON with VibeRequestId and ExecuteVibeModel data
-                var requestDataJson = Newtonsoft.Json.Linq.JObject.Parse(job.RequestData);
-                string vibeRequestId = requestDataJson["VibeRequestId"]?.ToString();
-                var executeVibeData = requestDataJson["ExecuteVibeData"]?.ToObject<TilerFront.Models.ExecuteVibeModel>();
-
-                if (string.IsNullOrWhiteSpace(vibeRequestId))
-                {
-                    throw new ArgumentException("Invalid request data for ProcessRequest job: VibeRequestId is required");
-                }
-
                 ScheduleDump dump = null;
-                // Create database context for this job
                 using (var db = new TilerFront.Models.ApplicationDbContext())
                 {
                     db.setAsReadOnly();
@@ -619,7 +628,9 @@ namespace PostProcessingServer.Services
                     string beforeScheduleId = tilerUser.ScheduleProfile.EvaluationUpdateId;
 
                     // Create DB_Schedule
-                    var dataRetrievalSet = TilerElements.DataRetrievalSet.scheduleManipulation;
+                    var dataRetrievalSet = TilerElements.DataRetrievalSet.scheduleManipulation
+                        .Add(DataRetrivalOption.Name)
+                        .Add(DataRetrivalOption.NameById);
                     TilerFront.DB_Schedule schedule = new TilerFront.DB_Schedule(
                         userAccount, 
                         referenceNow.constNow, 
@@ -658,6 +669,12 @@ namespace PostProcessingServer.Services
                         schedule.Locations.Add(defaultPersonaWorkLocation.Description.ToLower(), defaultPersonaWorkLocation);
                     }
 
+                    // Flip the preview to Processing immediately before the
+                    // heavy work begins. This is the boundary clients can
+                    // observe to render a "generating" indicator.
+                    await TransitionPreviewAsync(previewId, TilerElements.PreviewState.Processing, Utility.now().ToUnixTimeMilliseconds())
+                        .ConfigureAwait(false);
+
                     // Create ScheduleService and process the request
                     VibeServiceCore.ScheduleService scheduleService = new VibeServiceCore.ScheduleService(vibeRequest.VibeSession, schedule);
                     await scheduleService.ProcessRequest(vibeRequest, schedule).ConfigureAwait(false);
@@ -669,8 +686,9 @@ namespace PostProcessingServer.Services
                     vibeRequest.AfterScheduleId = afterScheduleId;
                     
                     db.Users.AddOrUpdate(tilerUser);
-                    dump = await schedule.CreateScheduleDump(currentLocation, dumpTimeLine: new TimeLine(schedule.Now.constNow.AddDays(-7), schedule.Now.constNow.AddDays(7))).ConfigureAwait(false);
+                    dump = await schedule.CreateScheduleDump(currentLocation, dumpTimeLine: new TimeLine(schedule.Now.constNow.AddDays(-14), schedule.Now.constNow.AddDays(14))).ConfigureAwait(false);
                     var now = Utility.now();
+                    bool requestStillActive = false;
                     if (dump?.XmlDoc != null)
                     {
                         var bigDataControl = new BigDataTiler.BigDataLogControl();
@@ -691,19 +709,57 @@ namespace PostProcessingServer.Services
                         string savedLogId = await bigDataControl.AddLogDocuments(splitLogs).ConfigureAwait(false);
                         System.Diagnostics.Trace.WriteLine($"Saved {splitLogs.Count} LogChange document(s) for job {job.Id}, parent ID: {savedLogId}");
 
-                        string createdPreviewId = null;
                         using (var writeDb = new TilerFront.Models.ApplicationDbContext())
                         {
-                            var vibePreview = new TilerElements.VibePreview
+                            // Re-read the request state under the write context.
+                            // The chat layer may have superseded this request
+                            // while the preview job was running. Per the
+                            // redesign, a preview belonging to a superseded
+                            // request must land as Invalidated and must not
+                            // trigger a client-facing notification.
+                            string superseded = TilerElements.RequestState.Superseded.ToString();
+                            string failed = TilerElements.RequestState.Failed.ToString();
+                            var currentState = await writeDb.VibeRequests
+                                .Where(r => r.Id == vibeRequest.Id)
+                                .Select(r => r.State_DB)
+                                .FirstOrDefaultAsync()
+                                .ConfigureAwait(false);
+                            requestStillActive =
+                                currentState == null ||
+                                (!string.Equals(currentState, superseded, StringComparison.OrdinalIgnoreCase)
+                                    && !string.Equals(currentState, failed, StringComparison.OrdinalIgnoreCase));
+
+                            // Re-attach the preview row created earlier and
+                            // record the produced output. The terminal state
+                            // depends on whether the request is still active.
+                            var vibePreview = await writeDb.VibePreviews
+                                .FirstOrDefaultAsync(p => p.Id == previewId)
+                                .ConfigureAwait(false);
+
+                            if (vibePreview == null)
                             {
-                                VibeRequestId = vibeRequest.Id,
-                                ScheduleDumpId = savedLogId,
-                                CreationTimeInMs = now.ToUnixTimeMilliseconds(),
-                                TilerUserId = job.TilerUserId
-                            };
-                            vibePreview.Id = vibePreview.GenerateId();
-                            createdPreviewId = vibePreview.Id;
-                            writeDb.VibePreviews.Add(vibePreview);
+                                // Should not happen; the row was inserted at
+                                // the top of this method. Treat as a hard
+                                // error so the catch handler can mark Failed.
+                                throw new InvalidOperationException(
+                                    $"Preview row {previewId} disappeared between Queued insert and Ready transition for job {job.Id}.");
+                            }
+
+                            vibePreview.ScheduleDumpId = savedLogId;
+                            long nowMs = now.ToUnixTimeMilliseconds();
+
+                            if (requestStillActive)
+                            {
+                                vibePreview.UpdateVibePreviewState(TilerElements.PreviewState.Ready, nowMs);
+                            }
+                            else
+                            {
+                                vibePreview.UpdateVibePreviewState(
+                                    TilerElements.PreviewState.Invalidated,
+                                    nowMs,
+                                    $"request-state-{currentState}-on-job-completion");
+                            }
+
                             await writeDb.SaveChangesAsync().ConfigureAwait(false);
                             foreach (var action in vibeRequest.Actions)
                             {
@@ -716,14 +772,39 @@ namespace PostProcessingServer.Services
                             await writeDb.SaveChangesAsync().ConfigureAwait(false);
                         }
 
-                        // Send WebSocket notification to connected client via TilerFront
-                        await JobNotificationService.Instance.NotifyPreviewCompletedAsync(
-                            userId: job.TilerUserId,
-                            vibeRequestId: vibeRequestId,
-                            previewId: createdPreviewId,
-                            scheduleDumpId: savedLogId,
-                            jobId: job.Id
-                        ).ConfigureAwait(false);
+                        // Only fan out the WebSocket notification when the
+                        // preview is genuinely the active artifact for the
+                        // request. A landed-but-invalidated preview still gets
+                        // persisted for audit, but the client must not be told
+                        // it's ready.
+                        if (requestStillActive)
+                        {
+                            await JobNotificationService.Instance.NotifyPreviewCompletedAsync(
+                                userId: job.TilerUserId,
+                                vibeRequestId: vibeRequestId,
+                                previewId: previewId,
+                                scheduleDumpId: savedLogId,
+                                jobId: job.Id
+                            ).ConfigureAwait(false);
+                        }
+                        else
+                        {
+                            System.Diagnostics.Trace.WriteLine(
+                                $"Skipping requestPreviewReady notification for job {job.Id}: VibeRequest {vibeRequestId} is no longer active.");
+                        }
+                    }
+                    else
+                    {
+                        // No XML output produced. Treat as a Failed preview so
+                        // the row reflects that no usable output was generated
+                        // for this request, and so retries (if the job
+                        // requeues for some other reason) can find and reuse
+                        // the existing row.
+                        await TransitionPreviewAsync(
+                            previewId,
+                            TilerElements.PreviewState.Failed,
+                            now.ToUnixTimeMilliseconds(),
+                            "no-schedule-dump-produced").ConfigureAwait(false);
                     }
 
                     // Update job status with success
@@ -747,7 +828,108 @@ namespace PostProcessingServer.Services
             catch (Exception ex)
             {
                 System.Diagnostics.Trace.TraceError($"Error in ProcessRequestPreviewAsync for job {job.Id}: {ex.Message}\n{ex.StackTrace}");
+                // Mark the preview Failed so the row reflects the outcome of
+                // this attempt. Best-effort: a failure to record the failure
+                // must not mask the original exception.
+                try
+                {
+                    await TransitionPreviewAsync(
+                        previewId,
+                        TilerElements.PreviewState.Failed,
+                        Utility.now().ToUnixTimeMilliseconds(),
+                        ex.Message).ConfigureAwait(false);
+                }
+                catch (Exception markEx)
+                {
+                    System.Diagnostics.Trace.TraceError(
+                        $"Failed to mark preview {previewId} as Failed for job {job.Id}: {markEx.Message}");
+                }
                 throw; // Re-throw to be handled by ProcessJobAsync retry logic
+            }
+        }
+
+        /// <summary>
+        /// Find-or-create the <see cref="VibePreview"/> row for this job in
+        /// <see cref="PreviewState.Queued"/>. The filtered unique index on
+        /// <c>VibePreviews(VibeRequestId)</c> guarantees at most one
+        /// non-invalidated row per request, so a re-attempt of the same job
+        /// (or a stale row left behind by a previous crash/Failed terminal
+        /// state) is reused rather than violating the index. Returns the
+        /// preview Id for the rest of the processor to reference.
+        /// </summary>
+        private async Task<string> EnsureQueuedPreviewAsync(string vibeRequestId, AnalysisJob job)
+        {
+            using (var writeDb = new TilerFront.Models.ApplicationDbContext())
+            {
+                string invalidated = TilerElements.PreviewState.Invalidated.ToString();
+                var existing = await writeDb.VibePreviews
+                    .Where(p => p.VibeRequestId == vibeRequestId
+                        && (p.State_DB == null || p.State_DB != invalidated))
+                    .OrderByDescending(p => p.CreationTimeInMs)
+                    .FirstOrDefaultAsync()
+                    .ConfigureAwait(false);
+
+                long nowMs = Utility.now().ToUnixTimeMilliseconds();
+
+                if (existing != null)
+                {
+                    // Reuse the row a previous attempt left behind. Reset to
+                    // Queued; terminal-field cleanup is intentionally minimal
+                    // (FailureReason / InvalidationReason from the prior
+                    // attempt remain as audit history until overwritten by a
+                    // subsequent terminal transition).
+                    existing.PreviewJobId = job.Id;
+                    existing.UpdateVibePreviewState(TilerElements.PreviewState.Queued, nowMs);
+                    await writeDb.SaveChangesAsync().ConfigureAwait(false);
+                    return existing.Id;
+                }
+
+                var preview = new TilerElements.VibePreview
+                {
+                    VibeRequestId = vibeRequestId,
+                    TilerUserId = job.TilerUserId,
+                    CreationTimeInMs = nowMs,
+                    PreviewJobId = job.Id
+                };
+                preview.UpdateVibePreviewState(TilerElements.PreviewState.Queued, nowMs);
+                preview.Id = preview.GenerateId();
+                writeDb.VibePreviews.Add(preview);
+                await writeDb.SaveChangesAsync().ConfigureAwait(false);
+                return preview.Id;
+            }
+        }
+
+        /// <summary>
+        /// Open a short-lived write context, load the preview by Id, run a
+        /// state transition through <see cref="VibePreview.UpdateVibePreviewState"/>,
+        /// and persist. Used for non-terminal mid-flight transitions
+        /// (Processing) and for terminal transitions made outside the main
+        /// completion block (Failed). The full success path uses a single
+        /// writeDb scope inline so it can save preview-actions in the same
+        /// transaction as the Ready transition.
+        /// </summary>
+        private async Task TransitionPreviewAsync(string previewId, TilerElements.PreviewState newState, long nowMs, string reason = null)
+        {
+            if (string.IsNullOrEmpty(previewId))
+            {
+                return;
+            }
+
+            using (var writeDb = new TilerFront.Models.ApplicationDbContext())
+            {
+                var preview = await writeDb.VibePreviews
+                    .FirstOrDefaultAsync(p => p.Id == previewId)
+                    .ConfigureAwait(false);
+
+                if (preview == null)
+                {
+                    System.Diagnostics.Trace.TraceWarning(
+                        $"TransitionPreviewAsync: preview {previewId} not found for transition to {newState}.");
+                    return;
+                }
+
+                preview.UpdateVibePreviewState(newState, nowMs, reason);
+                await writeDb.SaveChangesAsync().ConfigureAwait(false);
             }
         }
 
