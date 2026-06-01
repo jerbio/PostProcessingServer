@@ -1,0 +1,77 @@
+@model PostProcessingServer.Models.RoleListViewModel
+@{
+    ViewBag.Title = "Role Management";
+}
+
+<h2>Roles</h2>
+
+@if (TempData["Error"] != null)
+{
+    <div class="alert alert-danger alert-dismissible fade show">
+        @TempData["Error"]
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+}
+
+<div class="card mb-4">
+    <div class="card-header">Create Role</div>
+    <div class="card-body">
+        @using (Html.BeginForm("Create", "RoleManagement", FormMethod.Post))
+        {
+            @Html.AntiForgeryToken()
+            <div class="input-group" style="max-width:400px">
+                <input type="text" name="roleName" class="form-control" placeholder="Role name"
+                       required maxlength="256" autocomplete="off" />
+                <button type="submit" class="btn btn-primary">
+                    <i class="bi bi-plus-circle"></i> Create
+                </button>
+            </div>
+        }
+    </div>
+</div>
+
+@if (!Model.Roles.Any())
+{
+    <p class="text-muted">No roles defined yet. Use the form above to create one.</p>
+}
+else
+{
+    <table class="table table-bordered table-hover">
+        <thead class="table-dark">
+            <tr>
+                <th>Name</th>
+                <th class="text-center" style="width:120px">Members</th>
+                <th style="width:160px"></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var role in Model.Roles)
+            {
+                <tr>
+                    <td>@role.Name</td>
+                    <td class="text-center">
+                        <a href="@Url.Action("Members", "RoleManagement", new { roleId = role.Id })"
+                           class="badge bg-secondary text-decoration-none fs-6">
+                            @role.MemberCount
+                        </a>
+                    </td>
+                    <td class="text-end">
+                        <a href="@Url.Action("Members", "RoleManagement", new { roleId = role.Id })"
+                           class="btn btn-sm btn-outline-primary me-1">
+                            <i class="bi bi-people"></i> Members
+                        </a>
+                        @using (Html.BeginForm("Delete", "RoleManagement", FormMethod.Post, new { style = "display:inline" }))
+                        {
+                            @Html.AntiForgeryToken()
+                            <input type="hidden" name="roleId" value="@role.Id" />
+                            <button type="submit" class="btn btn-sm btn-outline-danger"
+                                    onclick="return confirm('Delete role \u0027@role.Name\u0027? Users will be unassigned from it.')">
+                                <i class="bi bi-trash"></i> Delete
+                            </button>
+                        }
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}

@@ -1,0 +1,131 @@
+@model PostProcessingServer.Models.FlagListViewModel
+@{
+    ViewBag.Title = "Feature Flags";
+}
+
+<div class="container mt-4">
+    <div class="row mb-3">
+        <div class="col-12 d-flex justify-content-between align-items-center">
+            <h2 class="mb-0"><i class="bi bi-toggles"></i> Feature Flags</h2>
+            @if (ViewBag.CurrentUser != null)
+            {
+                <div class="d-flex align-items-center">
+                    <span class="badge bg-secondary me-2">
+                        <i class="bi bi-person-circle"></i> @ViewBag.CurrentUser
+                    </span>
+                    @using (Html.BeginForm("Logout", "ChatAudit", FormMethod.Post, new { @class = "d-inline" }))
+                    {
+                        @Html.AntiForgeryToken()
+                        <button type="submit" class="btn btn-outline-danger btn-sm">
+                            <i class="bi bi-box-arrow-right"></i> Logout
+                        </button>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+
+    @if (TempData["SuccessMessage"] != null)
+    {
+        <div class="alert alert-success alert-dismissible fade show" role="alert">
+            <i class="bi bi-check-circle"></i> @TempData["SuccessMessage"]
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+    }
+    @if (TempData["ErrorMessage"] != null)
+    {
+        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+            <i class="bi bi-exclamation-triangle"></i> @TempData["ErrorMessage"]
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+    }
+
+    <div class="row mb-3">
+        <div class="col-12 d-flex gap-2">
+            @Html.ActionLink("+ New Flag", "Create", "FeatureFlagAdmin", null, new { @class = "btn btn-primary" })
+            @Html.ActionLink("Permissions", "Permissions", "FeatureFlagAdmin", null, new { @class = "btn btn-outline-secondary" })
+            @Html.ActionLink("Audit Log", "AuditLog", "FeatureFlagAdmin", null, new { @class = "btn btn-outline-secondary" })
+        </div>
+    </div>
+
+    @if (!Model.Flags.Any())
+    {
+        <div class="alert alert-info">No feature flags defined yet. Create one to get started.</div>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table table-hover table-sm align-middle">
+                <thead class="table-dark">
+                    <tr>
+                        <th>ID</th>
+                        <th>Name</th>
+                        <th>Owner</th>
+                        <th class="text-center">Enabled</th>
+                        <th class="text-center">Rollout %</th>
+                        <th class="text-center">User Toggle</th>
+                        <th>Expires (UTC)</th>
+                        <th>Updated (UTC)</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var flag in Model.Flags)
+                    {
+                        <tr>
+                            <td><code>@flag.Id</code></td>
+                            <td>
+                                @flag.Name
+                                @if (!string.IsNullOrEmpty(flag.Description))
+                                {
+                                    <br /><small class="text-muted">@flag.Description</small>
+                                }
+                            </td>
+                            <td><small>@flag.Owner</small></td>
+                            <td class="text-center">
+                                @if (flag.IsEnabledGlobal)
+                                {
+                                    <span class="badge bg-success"><i class="bi bi-check-lg"></i> On</span>
+                                }
+                                else
+                                {
+                                    <span class="badge bg-secondary"><i class="bi bi-x-lg"></i> Off</span>
+                                }
+                            </td>
+                            <td class="text-center">
+                                @(flag.RolloutPercent.HasValue ? flag.RolloutPercent + "%" : "—")
+                            </td>
+                            <td class="text-center">
+                                @(flag.UserToggleable ? "✓" : "—")
+                            </td>
+                            <td>
+                                <small>@(flag.ExpiresAtUtc.HasValue ? flag.ExpiresAtUtc.Value.ToString("yyyy-MM-dd HH:mm") : "—")</small>
+                            </td>
+                            <td>
+                                <small>@flag.UpdatedUtc.ToString("yyyy-MM-dd HH:mm")</small>
+                            </td>
+                            <td class="text-end text-nowrap">
+                                @Html.ActionLink("Edit", "Edit", new { id = flag.Id }, new { @class = "btn btn-outline-primary btn-sm" })
+
+                                @using (Html.BeginForm("Toggle", "FeatureFlagAdmin", new { id = flag.Id }, FormMethod.Post, new { @class = "d-inline" }))
+                                {
+                                    @Html.AntiForgeryToken()
+                                    <button type="submit" class="btn btn-outline-warning btn-sm"
+                                            title="@(flag.IsEnabledGlobal ? "Disable" : "Enable")">
+                                        @(flag.IsEnabledGlobal ? "Disable" : "Enable")
+                                    </button>
+                                }
+
+                                @using (Html.BeginForm("Delete", "FeatureFlagAdmin", new { id = flag.Id }, FormMethod.Post, new { @class = "d-inline", onsubmit = "return confirm('Delete flag \\'" + flag.Id + "\\'? This cannot be undone.');" }))
+                                {
+                                    @Html.AntiForgeryToken()
+                                    <button type="submit" class="btn btn-outline-danger btn-sm">Delete</button>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>

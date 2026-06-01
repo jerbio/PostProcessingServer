@@ -1,0 +1,128 @@
+@model PostProcessingServer.Models.RoleMembersViewModel
+@{
+    ViewBag.Title = "Role: " + Model.RoleName;
+}
+
+<div class="d-flex align-items-center mb-3 gap-2">
+    <a href="@Url.Action("Index", "RoleManagement")" class="btn btn-sm btn-outline-secondary">
+        <i class="bi bi-arrow-left"></i> All Roles
+    </a>
+    <h2 class="mb-0">Role: <strong>@Model.RoleName</strong></h2>
+</div>
+
+@if (TempData["Error"] != null)
+{
+    <div class="alert alert-danger alert-dismissible fade show">
+        @TempData["Error"]
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+}
+
+<div class="row">
+    <div class="col-md-6">
+        <div class="card mb-4">
+            <div class="card-header">
+                Members (@Model.Members.Count)
+            </div>
+            <div class="card-body p-0">
+                @if (!Model.Members.Any())
+                {
+                    <p class="p-3 text-muted mb-0">No members yet. Use the search panel to add users.</p>
+                }
+                else
+                {
+                    <table class="table table-sm table-hover mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Username</th>
+                                <th>Email</th>
+                                <th style="width:60px"></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var user in Model.Members)
+                            {
+                                <tr>
+                                    <td>@user.UserName</td>
+                                    <td class="text-muted small">@user.Email</td>
+                                    <td class="text-end">
+                                        @using (Html.BeginForm("RemoveUser", "RoleManagement", FormMethod.Post))
+                                        {
+                                            @Html.AntiForgeryToken()
+                                            <input type="hidden" name="roleId" value="@Model.RoleId" />
+                                            <input type="hidden" name="userId" value="@user.Id" />
+                                            <button type="submit" class="btn btn-sm btn-outline-danger"
+                                                    onclick="return confirm('Remove @user.UserName from role @Model.RoleName?')"
+                                                    title="Remove from role">
+                                                <i class="bi bi-person-dash"></i>
+                                            </button>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                }
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-6">
+        <div class="card mb-4">
+            <div class="card-header">Add User to Role</div>
+            <div class="card-body">
+                @using (Html.BeginForm("Members", "RoleManagement", FormMethod.Get))
+                {
+                    <input type="hidden" name="roleId" value="@Model.RoleId" />
+                    <div class="input-group mb-3">
+                        <input type="text" name="search" class="form-control"
+                               placeholder="Search by username or email"
+                               value="@Model.SearchQuery" autocomplete="off" />
+                        <button type="submit" class="btn btn-outline-secondary">
+                            <i class="bi bi-search"></i> Search
+                        </button>
+                    </div>
+                }
+
+                @if (Model.SearchResults != null && Model.SearchResults.Any())
+                {
+                    <table class="table table-sm table-hover">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Username</th>
+                                <th>Email</th>
+                                <th style="width:60px"></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var user in Model.SearchResults)
+                            {
+                                <tr>
+                                    <td>@user.UserName</td>
+                                    <td class="text-muted small">@user.Email</td>
+                                    <td class="text-end">
+                                        @using (Html.BeginForm("AddUser", "RoleManagement", FormMethod.Post))
+                                        {
+                                            @Html.AntiForgeryToken()
+                                            <input type="hidden" name="roleId" value="@Model.RoleId" />
+                                            <input type="hidden" name="userId" value="@user.Id" />
+                                            <button type="submit" class="btn btn-sm btn-outline-success" title="Add to role">
+                                                <i class="bi bi-person-plus"></i>
+                                            </button>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                }
+                else if (Model.SearchQuery != null)
+                {
+                    <p class="text-muted small">
+                        No users found matching &ldquo;@Model.SearchQuery&rdquo; that aren&rsquo;t already in this role.
+                    </p>
+                }
+            </div>
+        </div>
+    </div>
+</div>

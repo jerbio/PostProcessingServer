@@ -1,0 +1,146 @@
+@model PostProcessingServer.Models.PermissionsViewModel
+@{
+    ViewBag.Title = "Permissions & Role Assignments";
+}
+
+<div class="container mt-4">
+    <div class="row mb-3">
+        <div class="col-12 d-flex justify-content-between align-items-center">
+            <h2 class="mb-0"><i class="bi bi-shield-lock"></i> Permissions &amp; Role Assignments</h2>
+            @if (ViewBag.CurrentUser != null)
+            {
+                <div class="d-flex align-items-center">
+                    <span class="badge bg-secondary me-2">
+                        <i class="bi bi-person-circle"></i> @ViewBag.CurrentUser
+                    </span>
+                    @using (Html.BeginForm("Logout", "ChatAudit", FormMethod.Post, new { @class = "d-inline" }))
+                    {
+                        @Html.AntiForgeryToken()
+                        <button type="submit" class="btn btn-outline-danger btn-sm">
+                            <i class="bi bi-box-arrow-right"></i> Logout
+                        </button>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+
+    <div class="mb-2">
+        @Html.ActionLink("← Feature Flags", "Index", "FeatureFlagAdmin", null, new { @class = "btn btn-outline-secondary btn-sm" })
+        @Html.ActionLink("Audit Log", "AuditLog", "FeatureFlagAdmin", null, new { @class = "btn btn-outline-secondary btn-sm ms-1" })
+    </div>
+
+    @if (TempData["SuccessMessage"] != null)
+    {
+        <div class="alert alert-success alert-dismissible fade show" role="alert">
+            <i class="bi bi-check-circle"></i> @TempData["SuccessMessage"]
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+    }
+    @if (TempData["ErrorMessage"] != null)
+    {
+        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+            <i class="bi bi-exclamation-triangle"></i> @TempData["ErrorMessage"]
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+    }
+
+    <div class="row g-4">
+        <!-- ── Left column: create permission ────────────────────────── -->
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-header bg-primary text-white">
+                    <i class="bi bi-plus-circle"></i> Create Permission
+                </div>
+                <div class="card-body">
+                    @using (Html.BeginForm("CreatePermission", "FeatureFlagAdmin", FormMethod.Post))
+                    {
+                        @Html.AntiForgeryToken()
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold">Key</label>
+                            <input type="text" name="key" class="form-control font-monospace"
+                                   placeholder="e.g. flags.write" required maxlength="100" />
+                            <div class="form-text">Lowercase, dot-separated. Referenced in [RequirePermission].</div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Description</label>
+                            <input type="text" name="description" class="form-control"
+                                   placeholder="Optional description" maxlength="500" />
+                        </div>
+                        <button type="submit" class="btn btn-primary w-100">Create</button>
+                    }
+                </div>
+            </div>
+        </div>
+
+        <!-- ── Right column: permission table with role assignments ─── -->
+        <div class="col-md-8">
+            @if (!Model.Permissions.Any())
+            {
+                <div class="alert alert-info">No permissions defined yet. Create one on the left.</div>
+            }
+            else
+            {
+                foreach (var perm in Model.Permissions)
+                {
+                    <div class="card mb-3">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <span><code class="text-primary">@perm.Key</code></span>
+                            @if (!string.IsNullOrEmpty(perm.Description))
+                            {
+                                <small class="text-muted">@perm.Description</small>
+                            }
+                        </div>
+                        <div class="card-body">
+                            @if (perm.Assignments.Any())
+                            {
+                                <div class="d-flex flex-wrap gap-2 mb-3">
+                                    @foreach (var a in perm.Assignments)
+                                    {
+                                        <div class="d-flex align-items-center gap-1">
+                                            <span class="badge bg-dark">@a.RoleName</span>
+                                            @using (Html.BeginForm("RemoveRolePermission", "FeatureFlagAdmin", FormMethod.Post, new { @class = "d-inline" }))
+                                            {
+                                                @Html.AntiForgeryToken()
+                                                <input type="hidden" name="rolePermissionId" value="@a.RolePermissionId" />
+                                                <button type="submit" class="btn btn-outline-danger btn-sm py-0 px-1"
+                                                        title="Remove @a.RoleName from @perm.Key"
+                                                        onclick="return confirm('Remove role @a.RoleName from permission @perm.Key?')">
+                                                    <i class="bi bi-x"></i>
+                                                </button>
+                                            }
+                                        </div>
+                                    }
+                                </div>
+                            }
+                            else
+                            {
+                                <p class="text-muted small mb-2">No roles assigned.</p>
+                            }
+
+                            @if (Model.AvailableRoles.Any())
+                            {
+                                using (Html.BeginForm("AssignPermission", "FeatureFlagAdmin", FormMethod.Post, new { @class = "d-flex gap-2" }))
+                                {
+                                    @Html.AntiForgeryToken()
+                                    <input type="hidden" name="permissionId" value="@perm.Id" />
+                                    <select name="roleId" class="form-select form-select-sm" style="max-width:200px;">
+                                        @foreach (var role in Model.AvailableRoles)
+                                        {
+                                            <option value="@role.Value">@role.Text</option>
+                                        }
+                                    </select>
+                                    <button type="submit" class="btn btn-outline-primary btn-sm">Assign role</button>
+                                }
+                            }
+                            else
+                            {
+                                <small class="text-muted">No roles exist in the database yet.</small>
+                            }
+                        </div>
+                    </div>
+                }
+            }
+        </div>
+    </div>
+</div>

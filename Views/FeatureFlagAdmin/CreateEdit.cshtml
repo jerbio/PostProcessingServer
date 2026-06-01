@@ -1,0 +1,105 @@
+@model PostProcessingServer.Models.FlagEditViewModel
+@{
+    ViewBag.Title = Model.IsNew ? "Create Feature Flag" : "Edit Feature Flag";
+}
+
+<div class="container mt-4" style="max-width: 720px;">
+    <div class="row mb-3">
+        <div class="col-12 d-flex justify-content-between align-items-center">
+            <h2 class="mb-0">
+                <i class="bi bi-@(Model.IsNew ? "plus-circle" : "pencil-square")"></i>
+                @(Model.IsNew ? "Create Feature Flag" : "Edit Feature Flag: " + Model.Id)
+            </h2>
+            @if (ViewBag.CurrentUser != null)
+            {
+                <span class="badge bg-secondary">
+                    <i class="bi bi-person-circle"></i> @ViewBag.CurrentUser
+                </span>
+            }
+        </div>
+    </div>
+
+    @using (Html.BeginForm(Model.IsNew ? "Create" : "Edit", "FeatureFlagAdmin",
+        Model.IsNew ? null : new RouteValueDictionary { { "id", Model.Id } },
+        FormMethod.Post, new { @class = "needs-validation", novalidate = "novalidate" }))
+    {
+        @Html.AntiForgeryToken()
+
+        <div class="card">
+            <div class="card-body">
+                @Html.ValidationSummary(false, null, new { @class = "alert alert-danger" })
+
+                @*<div class="mb-3">
+                    @Html.LabelFor(m => m.FlagId, new { @class = "form-label fw-semibold" })
+                    @if (Model.IsNew)
+                    {
+                        @Html.TextBoxFor(m => m.FlagId, new { @class = "form-control font-monospace", placeholder = "e.g. dark-mode or billing.new_flow" })
+                        <div class="form-text">Permanent identifier — lowercase letters, digits, hyphens, underscores, dots. Cannot be changed after creation.</div>
+                    }
+                    else
+                    {
+                        <input type="text" class="form-control font-monospace" value="@Model.FlagId" readonly disabled />
+                        @Html.HiddenFor(m => m.FlagId)
+                    }
+                    @Html.ValidationMessageFor(m => m.FlagId, null, new { @class = "text-danger small" })
+                </div>*@
+
+                <div class="mb-3">
+                    @Html.LabelFor(m => m.Name, new { @class = "form-label fw-semibold" })
+                    @Html.TextBoxFor(m => m.Name, new { @class = "form-control", placeholder = "Human-readable display name" })
+                    @Html.ValidationMessageFor(m => m.Name, null, new { @class = "text-danger small" })
+                </div>
+
+                <div class="mb-3">
+                    @Html.LabelFor(m => m.Description, new { @class = "form-label" })
+                    @Html.TextAreaFor(m => m.Description, 3, 0, new { @class = "form-control", placeholder = "Optional description of what this flag controls" })
+                </div>
+
+                <div class="mb-3">
+                    @Html.LabelFor(m => m.Owner, new { @class = "form-label" })
+                    @Html.TextBoxFor(m => m.Owner, new { @class = "form-control", placeholder = "Team or person responsible" })
+                    @Html.ValidationMessageFor(m => m.Owner, null, new { @class = "text-danger small" })
+                </div>
+
+                <div class="row mb-3">
+                    <div class="col-sm-6">
+                        <div class="form-check form-switch mt-2">
+                            @Html.CheckBoxFor(m => m.IsEnabledGlobal, new { @class = "form-check-input", role = "switch" })
+                            @Html.LabelFor(m => m.IsEnabledGlobal, new { @class = "form-check-label" })
+                        </div>
+                        <div class="form-text">Kill-switch: disable globally without deploying code.</div>
+                    </div>
+                    <div class="col-sm-6">
+                        <div class="form-check form-switch mt-2">
+                            @Html.CheckBoxFor(m => m.UserToggleable, new { @class = "form-check-input", role = "switch" })
+                            @Html.LabelFor(m => m.UserToggleable, new { @class = "form-check-label" })
+                        </div>
+                        <div class="form-text">Allow end-users to self-toggle via the client app.</div>
+                    </div>
+                </div>
+
+                <div class="row mb-3">
+                    <div class="col-sm-6">
+                        @Html.LabelFor(m => m.RolloutPercent, new { @class = "form-label" })
+                        @Html.TextBoxFor(m => m.RolloutPercent, new { @class = "form-control", type = "number", min = "0", max = "100", placeholder = "0–100 (leave blank = all or none)" })
+                        @Html.ValidationMessageFor(m => m.RolloutPercent, null, new { @class = "text-danger small" })
+                        <div class="form-text">Stable hash-based bucketing. Ignored when globally disabled.</div>
+                    </div>
+                    <div class="col-sm-6">
+                        @Html.LabelFor(m => m.ExpiresAtUtc, new { @class = "form-label" })
+                        @Html.TextBoxFor(m => m.ExpiresAtUtc, new { @class = "form-control", type = "datetime-local" })
+                        <div class="form-text">Flag is treated as disabled after this UTC time.</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card-footer d-flex gap-2">
+                <button type="submit" class="btn btn-primary">
+                    <i class="bi bi-@(Model.IsNew ? "plus-circle" : "floppy")"></i>
+                    @(Model.IsNew ? "Create Flag" : "Save Changes")
+                </button>
+                @Html.ActionLink("Cancel", "Index", "FeatureFlagAdmin", null, new { @class = "btn btn-outline-secondary" })
+            </div>
+        </div>
+    }
+</div>

@@ -1,0 +1,158 @@
+@model PostProcessingServer.Models.AuditLogViewModel
+@{
+    ViewBag.Title = "Feature Flag Audit Log";
+}
+
+<div class="container mt-4">
+    <div class="row mb-3">
+        <div class="col-12 d-flex justify-content-between align-items-center">
+            <h2 class="mb-0"><i class="bi bi-journal-text"></i> Feature Flag Audit Log</h2>
+            @if (ViewBag.CurrentUser != null)
+            {
+                <div class="d-flex align-items-center">
+                    <span class="badge bg-secondary me-2">
+                        <i class="bi bi-person-circle"></i> @ViewBag.CurrentUser
+                    </span>
+                    @using (Html.BeginForm("Logout", "ChatAudit", FormMethod.Post, new { @class = "d-inline" }))
+                    {
+                        @Html.AntiForgeryToken()
+                        <button type="submit" class="btn btn-outline-danger btn-sm">
+                            <i class="bi bi-box-arrow-right"></i> Logout
+                        </button>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+
+    <div class="mb-3">
+        @Html.ActionLink("← Feature Flags", "Index", "FeatureFlagAdmin", null, new { @class = "btn btn-outline-secondary btn-sm" })
+        @Html.ActionLink("Permissions", "Permissions", "FeatureFlagAdmin", null, new { @class = "btn btn-outline-secondary btn-sm ms-1" })
+    </div>
+
+    <!-- Filter bar -->
+    @using (Html.BeginForm("AuditLog", "FeatureFlagAdmin", FormMethod.Get, new { @class = "row g-2 mb-3" }))
+    {
+        <div class="col-auto">
+            <input type="text" name="flagName" value="@Model.FilterFlagName"
+                   class="form-control form-control-sm" placeholder="Filter by flag ID…" />
+        </div>
+        <div class="col-auto">
+            <button type="submit" class="btn btn-outline-primary btn-sm">Filter</button>
+            @if (!string.IsNullOrEmpty(Model.FilterFlagName))
+            {
+                @Html.ActionLink("Clear", "AuditLog", "FeatureFlagAdmin", null, new { @class = "btn btn-outline-secondary btn-sm ms-1" })
+            }
+        </div>
+        <div class="col-auto align-self-center">
+            <small class="text-muted">@Model.TotalCount total entries</small>
+        </div>
+    }
+
+    @if (!Model.Entries.Any())
+    {
+        <div class="alert alert-info">No audit log entries@(string.IsNullOrEmpty(Model.FilterFlagName) ? "" : " matching the filter") found.</div>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table table-sm table-hover align-middle">
+                <thead class="table-dark">
+                    <tr>
+                        <th>Timestamp (UTC)</th>
+                        <th>Flag</th>
+                        <th>Action</th>
+                        <th>Actor</th>
+                        <th>Source</th>
+                        <th>Changes</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var entry in Model.Entries)
+                    {
+                        <tr>
+                            <td class="text-nowrap">
+                                <small>@entry.Utc.ToString("yyyy-MM-dd HH:mm:ss")</small>
+                            </td>
+                            <td><code>@entry.FlagName</code></td>
+                            <td>
+                                @{
+                                    string badgeClass = entry.Action == "Create" ? "bg-success"
+                                        : entry.Action == "Delete" ? "bg-danger"
+                                        : entry.Action == "Enable" ? "bg-primary"
+                                        : entry.Action == "Disable" ? "bg-warning text-dark"
+                                        : "bg-secondary";
+                                }
+                                <span class="badge @badgeClass">@entry.Action</span>
+                            </td>
+                            <td><small>@(string.IsNullOrEmpty(entry.ActorUserId) ? "—" : entry.ActorUserId)</small></td>
+                            <td><span class="badge bg-light text-dark border">@entry.ActorSource</span></td>
+                            <td>
+                                @if (!string.IsNullOrEmpty(entry.OldValueJson) || !string.IsNullOrEmpty(entry.NewValueJson))
+                                {
+                                    <button class="btn btn-outline-secondary btn-sm py-0 px-1"
+                                            type="button"
+                                            data-bs-toggle="collapse"
+                                            data-bs-target="#diff-@entry.Id">
+                                        <i class="bi bi-code-square"></i>
+                                    </button>
+                                }
+                            </td>
+                        </tr>
+                        if (!string.IsNullOrEmpty(entry.OldValueJson) || !string.IsNullOrEmpty(entry.NewValueJson))
+                        {
+                            <tr class="collapse" id="diff-@entry.Id">
+                                <td colspan="6">
+                                    <div class="row g-2 p-2">
+                                        @if (!string.IsNullOrEmpty(entry.OldValueJson))
+                                        {
+                                            <div class="col-md-6">
+                                                <div class="card border-danger">
+                                                    <div class="card-header bg-danger text-white py-1 small">Before</div>
+                                                    <pre class="card-body mb-0 small" style="white-space:pre-wrap;font-size:0.75rem;">@entry.OldValueJson</pre>
+                                                </div>
+                                            </div>
+                                        }
+                                        @if (!string.IsNullOrEmpty(entry.NewValueJson))
+                                        {
+                                            <div class="col-md-6">
+                                                <div class="card border-success">
+                                                    <div class="card-header bg-success text-white py-1 small">After</div>
+                                                    <pre class="card-body mb-0 small" style="white-space:pre-wrap;font-size:0.75rem;">@entry.NewValueJson</pre>
+                                                </div>
+                                            </div>
+                                        }
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Pagination -->
+        if (Model.TotalPages > 1)
+        {
+            <nav aria-label="Audit log pagination">
+                <ul class="pagination pagination-sm justify-content-center">
+                    @if (Model.Page > 1)
+                    {
+                        <li class="page-item">
+                            @Html.ActionLink("‹ Prev", "AuditLog", new { flagName = Model.FilterFlagName, page = Model.Page - 1 }, new { @class = "page-link" })
+                        </li>
+                    }
+                    <li class="page-item disabled">
+                        <span class="page-link">Page @Model.Page of @Model.TotalPages</span>
+                    </li>
+                    @if (Model.Page < Model.TotalPages)
+                    {
+                        <li class="page-item">
+                            @Html.ActionLink("Next ›", "AuditLog", new { flagName = Model.FilterFlagName, page = Model.Page + 1 }, new { @class = "page-link" })
+                        </li>
+                    }
+                </ul>
+            </nav>
+        }
+    }
+</div>
