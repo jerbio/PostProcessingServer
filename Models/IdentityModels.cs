@@ -1,4 +1,4 @@
-﻿using System.ComponentModel.DataAnnotations.Schema;
+using System.ComponentModel.DataAnnotations.Schema;
 using System.Data.Entity;
 using System.Data.Entity.Infrastructure.Annotations;
 using System.Security.Claims;
@@ -51,6 +51,7 @@ namespace PostProcessingServer.Models
         public virtual DbSet<FeatureFlagAuditLog> FeatureFlagAuditLogs { get; set; }
         public virtual DbSet<Permission> Permissions { get; set; }
         public virtual DbSet<RolePermission> RolePermissions { get; set; }
+        public DbSet<TileShareScheduleRequest> TileShareScheduleRequests { get; set; }
 
         protected override void OnModelCreating(DbModelBuilder modelBuilder)
         {

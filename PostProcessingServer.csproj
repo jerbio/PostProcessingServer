@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="15.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <Import Project="..\..\My24HourTimerWPF\packages\Microsoft.CodeDom.Providers.DotNetCompilerPlatform.2.0.1\build\net46\Microsoft.CodeDom.Providers.DotNetCompilerPlatform.props" Condition="Exists('..\..\My24HourTimerWPF\packages\Microsoft.CodeDom.Providers.DotNetCompilerPlatform.2.0.1\build\net46\Microsoft.CodeDom.Providers.DotNetCompilerPlatform.props')" />
   <Import Project="..\packages\Microsoft.CodeDom.Providers.DotNetCompilerPlatform.2.0.1\build\net46\Microsoft.CodeDom.Providers.DotNetCompilerPlatform.props" Condition="Exists('..\packages\Microsoft.CodeDom.Providers.DotNetCompilerPlatform.2.0.1\build\net46\Microsoft.CodeDom.Providers.DotNetCompilerPlatform.props')" />
@@ -352,10 +352,6 @@
     <Compile Include="Global.asax.cs">
       <DependentUpon>Global.asax</DependentUpon>
     </Compile>
-    <Compile Include="Migrations\202604210655082_jobLabelUdatesAndVibeRequestFix.cs" />
-    <Compile Include="Migrations\202604210655082_jobLabelUdatesAndVibeRequestFix.Designer.cs">
-      <DependentUpon>202604210655082_jobLabelUdatesAndVibeRequestFix.cs</DependentUpon>
-    </Compile>
     <Compile Include="Migrations\Configuration.cs" />
     <Compile Include="Models\AccountViewModels.cs" />
     <Compile Include="Models\AnalysisJobModels.cs" />
@@ -367,6 +363,13 @@
     <Compile Include="Models\ManageViewModels.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="Services\AnalysisJobProcessor.cs" />
+    <Compile Include="Services\BackgroundJobDispatcher.cs" />
+    <Compile Include="Services\BackgroundJobWorker.cs" />
+    <Compile Include="Services\TileShareAccessJobHandler.cs" />
+    <Compile Include="Services\TileShareScheduleJobHandler.cs" />
+    <Compile Include="Services\TileShareScheduleUpdatePlanner.cs" />
+    <Compile Include="Services\TileShareScheduleCleanupWorker.cs" />
+    <Compile Include="Services\TileShareActivityCleanupWorker.cs" />
     <Compile Include="Services\AnalysisJobQueue.cs" />
     <Compile Include="Services\AnalysisLogControl.cs" />
     <Compile Include="Services\ChatAuditService.cs" />
@@ -500,15 +503,16 @@
       <Project>{86E36121-0952-46AB-9DF4-5AF34E2141B6}</Project>
       <Name>DBTilerElement</Name>
     </ProjectReference>
+    <ProjectReference Include="..\..\My24HourTimerWPF\ClusterManager\ClusterManager.csproj">
+      <Project>{65caab40-d0a7-4dc6-82cb-777665374330}</Project>
+      <Name>ClusterManager</Name>
+    </ProjectReference>
     <ProjectReference Include="..\TilerFront\TilerFront.csproj">
       <Project>{5E86E44F-7CE0-482D-B3C5-059EF7032398}</Project>
       <Name>TilerFront</Name>
     </ProjectReference>
   </ItemGroup>
   <ItemGroup>
-    <EmbeddedResource Include="Migrations\202604210655082_jobLabelUdatesAndVibeRequestFix.resx">
-      <DependentUpon>202604210655082_jobLabelUdatesAndVibeRequestFix.cs</DependentUpon>
-    </EmbeddedResource>
   </ItemGroup>
   <PropertyGroup>
     <VisualStudioVersion Condition="'$(VisualStudioVersion)' == ''">10.0</VisualStudioVersion>

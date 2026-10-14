@@ -20,14 +20,20 @@ namespace PostProcessingServer.Services
         private static readonly Lazy<AnalysisJobQueue> _instance = new Lazy<AnalysisJobQueue>(() => new AnalysisJobQueue());
         private readonly ConcurrentQueue<AnalysisJob> _queue = new ConcurrentQueue<AnalysisJob>();
         private readonly ConcurrentDictionary<string, AnalysisJob> _activeJobs = new ConcurrentDictionary<string, AnalysisJob>();
-        private readonly SemaphoreSlim _signal = new SemaphoreSlim(0);
         private bool _isInitialized = false;
         private readonly object _initLock = new object();
 
         public static AnalysisJobQueue Instance => _instance.Value;
 
-        private AnalysisJobQueue()
+        private readonly Action<AnalysisJob> persistQueuedJob;
+        private readonly Func<IReadOnlyList<AnalysisJob>> recoverJobs;
+
+        private AnalysisJobQueue() : this(PersistQueuedJob, RecoverJobs) { }
+
+        internal AnalysisJobQueue(Action<AnalysisJob> persistQueuedJob, Func<IReadOnlyList<AnalysisJob>> recoverJobs)
         {
+            this.persistQueuedJob = persistQueuedJob ?? throw new ArgumentNullException(nameof(persistQueuedJob));
+            this.recoverJobs = recoverJobs ?? throw new ArgumentNullException(nameof(recoverJobs));
         }
 
         public int QueueDepth => _queue.Count;
@@ -41,71 +47,44 @@ namespace PostProcessingServer.Services
         {
             lock (_initLock)
             {
-                if (_isInitialized)
+                if (_isInitialized) return 0;
+                // The store persists recovery before returning. If it fails, leave
+                // initialization false so the shared dispatcher retries later.
+                var jobs = recoverJobs();
+                foreach (var job in jobs)
                 {
-                    System.Diagnostics.Trace.WriteLine("AnalysisJobQueue already initialized, skipping database load");
-                    return 0;
+                    _queue.Enqueue(job);
+                    _activeJobs.TryAdd(job.Id, job);
                 }
-
-                int loadedCount = 0;
-                try
-                {
-                    using (var db = new PostProcessingServer.Models.PostProcessorApplicationDbContext())
-                    {
-                        // Find jobs that were queued or processing when the
-                        // server shut down. The DB column is the string
-                        // Status_DB; compare against ToString() of the enum
-                        // values so EF6 translates this to a column = literal
-                        // SQL filter.
-                        string queuedDb = AnalysisJobStatus.Queued.ToString();
-                        string processingDb = AnalysisJobStatus.Processing.ToString();
-                        var incompleteJobs = db.AnalysisJobs
-                            .Where(j => j.Status_DB == queuedDb || j.Status_DB == processingDb)
-                            .OrderBy(j => j.CreatedAt)
-                            .ToList();
-
-                        foreach (var job in incompleteJobs)
-                        {
-                            // Reset processing jobs back to queued
-                            if (job.Status == AnalysisJobStatus.Processing)
-                            {
-                                job.Status = AnalysisJobStatus.Queued;
-                                job.StartedAt = null;
-                            }
-
-                            // Add to in-memory queue
-                            _queue.Enqueue(job);
-                            _activeJobs.TryAdd(job.Id, job);
-                            _signal.Release();
-                            loadedCount++;
-                        }
-
-                        // Update all processing jobs in database to queued
-                        var processingJobs = db.AnalysisJobs
-                            .Where(j => j.Status_DB == processingDb)
-                            .ToList();
-
-                        foreach (var job in processingJobs)
-                        {
-                            job.Status = AnalysisJobStatus.Queued;
-                            job.StartedAt = null;
-                        }
-
-                        if (processingJobs.Any())
-                        {
-                            db.SaveChanges();
-                        }
-
-                        System.Diagnostics.Trace.WriteLine($"Loaded {loadedCount} incomplete jobs from database");
-                    }
-                }
-                catch (Exception ex)
-                {
-                    System.Diagnostics.Trace.TraceError($"Failed to load incomplete jobs from database: {ex}");
-                }
-
                 _isInitialized = true;
-                return loadedCount;
+                return jobs.Count;
+            }
+        }
+
+        private static IReadOnlyList<AnalysisJob> RecoverJobs()
+        {
+            using (var db = new PostProcessingServer.Models.PostProcessorApplicationDbContext())
+            {
+                string queued = AnalysisJobStatus.Queued.ToString();
+                string processing = AnalysisJobStatus.Processing.ToString();
+                var jobs = db.AnalysisJobs.Where(j => j.Status_DB == queued || j.Status_DB == processing)
+                    .OrderBy(j => j.CreatedAt).ToList();
+                foreach (var job in jobs)
+                {
+                    job.Status = AnalysisJobStatus.Queued;
+                    job.StartedAt = null;
+                }
+                db.SaveChanges();
+                return jobs;
+            }
+        }
+
+        private static void PersistQueuedJob(AnalysisJob job)
+        {
+            using (var db = new PostProcessingServer.Models.PostProcessorApplicationDbContext())
+            {
+                db.AnalysisJobs.AddOrUpdate(job);
+                db.SaveChanges();
             }
         }
 
@@ -121,40 +100,29 @@ namespace PostProcessingServer.Services
             if (string.IsNullOrWhiteSpace(job.Id))
                 throw new ArgumentException("Job must have a valid JobId", nameof(job));
 
-            job.Status = AnalysisJobStatus.Queued;
-            _queue.Enqueue(job);
-            _activeJobs.TryAdd(job.Id, job);
-            
-            // Persist to database
-            try
+            lock (_initLock)
             {
-                using (var db = new PostProcessingServer.Models.PostProcessorApplicationDbContext())
+                // Serialize first publication with startup recovery, otherwise a new
+                // persisted job can be loaded and published a second time on startup.
+                LoadIncompleteJobsFromDatabase();
+                job.Status = AnalysisJobStatus.Queued;
+                try { persistQueuedJob(job); }
+                catch (Exception error)
                 {
-                    db.AnalysisJobs.AddOrUpdate(job);
-                    db.SaveChanges();
+                    System.Diagnostics.Trace.TraceError("jobs.enqueue.failed JobId={0} ExceptionType={1}", job.Id, error.GetType().Name);
+                    throw;
                 }
+                _activeJobs[job.Id] = job;
+                _queue.Enqueue(job);
             }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Trace.TraceError($"Failed to persist new job {job.Id}: {ex}");
-            }
-            
-            // Signal that a new item is available
-            _signal.Release();
         }
 
-        public async Task<AnalysisJob> DequeueAsync(CancellationToken cancellationToken = default)
+        public bool TryDequeue(out AnalysisJob job)
         {
-            await _signal.WaitAsync(cancellationToken).ConfigureAwait(false);
-
-            if (_queue.TryDequeue(out AnalysisJob job))
-            {
-                job.Status = AnalysisJobStatus.Processing;
-                job.StartedAt = Utility.now();
-                return job;
-            }
-
-            return null;
+            if (!_queue.TryDequeue(out job)) return false;
+            job.Status = AnalysisJobStatus.Processing;
+            job.StartedAt = Utility.now();
+            return true;
         }
 
         public AnalysisJob GetJob(string jobId)

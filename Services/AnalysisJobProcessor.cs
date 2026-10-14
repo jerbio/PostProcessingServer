@@ -10,7 +10,6 @@ using System.Data.Entity.Migrations;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Web.Hosting;
 using TilerElements;
 using TilerFront;
 using TilerCrossServerResources;
@@ -18,103 +17,37 @@ using BigDataTiler;
 
 namespace PostProcessingServer.Services
 {
-    /// <summary>
-    /// Background service that processes analysis jobs from the queue
-    /// Implements IRegisteredObject for graceful shutdown in ASP.NET
-    /// </summary>
-    public class AnalysisJobProcessor : IRegisteredObject
+    // Analysis-specific handler. Hosting, concurrency and shutdown belong to the
+    // shared PPS BackgroundJobWorker; this class never launches detached tasks.
+    public class AnalysisJobProcessor : IBackgroundJobHandler
     {
-        private readonly CancellationTokenSource _cancellationTokenSource = new CancellationTokenSource();
-        private Task _processingTask;
         private readonly AnalysisJobQueue _jobQueue = AnalysisJobQueue.Instance;
-        private readonly int _maxConcurrentJobs;
-        private readonly SemaphoreSlim _concurrencySemaphore;
-
+        private readonly object maintenanceGate = new object();
+        private DateTimeOffset nextCleanup = DateTimeOffset.MinValue;
         private static readonly Lazy<AnalysisJobProcessor> _instance = new Lazy<AnalysisJobProcessor>(() => new AnalysisJobProcessor());
         public static AnalysisJobProcessor Instance => _instance.Value;
+        public string Name => "Analysis";
+        private AnalysisJobProcessor() { }
 
-        private AnalysisJobProcessor()
+        public async Task<bool> TryProcessNextAsync(CancellationToken cancellationToken)
         {
-            // Load max concurrent jobs from configuration
-            _maxConcurrentJobs = ConfigurationUtility.GetInt(
-                ConfigurationUtility.MaxConcurrentJobsKey,
-                ConfigurationUtility.DefaultMaxConcurrentJobs);
-            
-            _concurrencySemaphore = new SemaphoreSlim(_maxConcurrentJobs, _maxConcurrentJobs);
-        }
-
-        /// <summary>
-        /// Starts the background job processor
-        /// </summary>
-        public void Start()
-        {
-            HostingEnvironment.RegisterObject(this);
-            
-            // Load incomplete jobs from database before starting processing
-            int loadedJobCount = _jobQueue.LoadIncompleteJobsFromDatabase();
-            System.Diagnostics.Trace.WriteLine($"AnalysisJobProcessor starting with {loadedJobCount} jobs loaded from database");
-            
-            _processingTask = Task.Run(() => ProcessJobsAsync(_cancellationTokenSource.Token));
-        }
-
-        /// <summary>
-        /// Main processing loop
-        /// </summary>
-        private async Task ProcessJobsAsync(CancellationToken cancellationToken)
-        {
-            System.Diagnostics.Trace.WriteLine("AnalysisJobProcessor started");
-
-            // Start cleanup task
-            var cleanupTask = Task.Run(() => CleanupLoopAsync(cancellationToken), cancellationToken);
-
-            while (!cancellationToken.IsCancellationRequested)
+            cancellationToken.ThrowIfCancellationRequested();
+            // A failed startup read is retried by the shared dispatcher. Do not mark
+            // the queue initialized until its persisted recovery has succeeded.
+            _jobQueue.LoadIncompleteJobsFromDatabase();
+            lock (maintenanceGate)
             {
-                try
+                if (DateTimeOffset.UtcNow >= nextCleanup)
                 {
-                    // Wait for available slot
-                    await _concurrencySemaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
-
-                    // Dequeue next job
-                    var job = await _jobQueue.DequeueAsync(cancellationToken).ConfigureAwait(false);
-
-                    if (job != null)
-                    {
-                        // Process job in background task
-                        _ = Task.Run(async () =>
-                        {
-                            try
-                            {
-                                await ProcessJobAsync(job, cancellationToken).ConfigureAwait(false);
-                            }
-                            finally
-                            {
-                                _concurrencySemaphore.Release();
-                            }
-                        }, cancellationToken);
-                    }
-                    else
-                    {
-                        _concurrencySemaphore.Release();
-                    }
-                }
-                catch (OperationCanceledException)
-                {
-                    break;
-                }
-                catch (Exception ex)
-                {
-                    System.Diagnostics.Trace.WriteLine($"Error in processing loop: {ex.Message}");
-                    _concurrencySemaphore.Release();
-                    
-                    // Use configurable poll interval for error retry
-                    int pollIntervalMs = ConfigurationUtility.GetInt(
-                        ConfigurationUtility.JobPollIntervalMsKey,
-                        ConfigurationUtility.DefaultJobPollIntervalMs);
-                    await Task.Delay(pollIntervalMs, cancellationToken).ConfigureAwait(false);
+                    _jobQueue.CleanupOldJobs(TimeSpan.FromHours(ConfigurationUtility.GetInt(
+                        ConfigurationUtility.JobCleanupAgeHoursKey, ConfigurationUtility.DefaultJobCleanupAgeHours)));
+                    nextCleanup = DateTimeOffset.UtcNow.AddHours(Math.Max(1, ConfigurationUtility.GetInt(
+                        ConfigurationUtility.CleanupIntervalHoursKey, ConfigurationUtility.DefaultCleanupIntervalHours)));
                 }
             }
-
-            System.Diagnostics.Trace.WriteLine("AnalysisJobProcessor stopped");
+            if (!_jobQueue.TryDequeue(out var job)) return false;
+            await ProcessJobAsync(job, cancellationToken).ConfigureAwait(false);
+            return true;
         }
 
         /// <summary>
@@ -148,6 +81,7 @@ namespace PostProcessingServer.Services
                 _jobQueue.UpdateJobStatus(job.Id, AnalysisJobStatus.Completed);
                 System.Diagnostics.Trace.WriteLine($"Job {job.Id} completed successfully");
             }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
             catch (Exception ex)
             {
                 System.Diagnostics.Trace.WriteLine($"Job {job.Id} failed: {ex.Message}");
@@ -653,7 +587,13 @@ namespace PostProcessingServer.Services
                         currentLocation = TilerElements.Utility.defaultLLMLookupLocation.CreateCopy();
                         currentLocation.IsVerified = true;
                     }
-                    
+
+                    var thirdPartyDataTask = userAccount.ScheduleLogControl
+                        .readThirdPartyThirdpartyCalendarInfo(userAccount.UserID, userAccount.getTilerUser().generateReferenceNow(currentTime), schedule.Now.ComputationRange);
+
+                    var thirdPartyData = await thirdPartyDataTask.ConfigureAwait(false);
+                    schedule.updateDataSetWithThirdPartyData(thirdPartyData);
+
                     schedule.SetCurrentLocation(currentLocation);
 
                     // Get default persona locations
@@ -680,10 +620,6 @@ namespace PostProcessingServer.Services
                     await scheduleService.ProcessRequest(vibeRequest, schedule).ConfigureAwait(false);
 
                     string afterScheduleId = tilerUser.ScheduleProfile.EvaluationUpdateId;
-
-                    // Update VibeRequest with before/after schedule IDs
-                    vibeRequest.BeforeScheduleId = beforeScheduleId;
-                    vibeRequest.AfterScheduleId = afterScheduleId;
                     
                     db.Users.AddOrUpdate(tilerUser);
                     dump = await schedule.CreateScheduleDump(currentLocation, dumpTimeLine: new TimeLine(schedule.Now.constNow.AddDays(-14), schedule.Now.constNow.AddDays(14))).ConfigureAwait(false);
@@ -733,6 +669,7 @@ namespace PostProcessingServer.Services
                             // record the produced output. The terminal state
                             // depends on whether the request is still active.
                             var vibePreview = await writeDb.VibePreviews
+                                .Include(o=>o.VibeRequest)
                                 .FirstOrDefaultAsync(p => p.Id == previewId)
                                 .ConfigureAwait(false);
 
@@ -758,6 +695,13 @@ namespace PostProcessingServer.Services
                                     TilerElements.PreviewState.Invalidated,
                                     nowMs,
                                     $"request-state-{currentState}-on-job-completion");
+                            }
+
+                            // Update VibeRequest with before/after schedule IDs
+                            if (vibePreview.VibeRequest!=null) {
+                                var localVibeRequest = vibePreview.VibeRequest;
+                                localVibeRequest.BeforeScheduleId = beforeScheduleId;
+                                localVibeRequest.AfterScheduleId = afterScheduleId;
                             }
 
                             await writeDb.SaveChangesAsync().ConfigureAwait(false);
@@ -933,63 +877,5 @@ namespace PostProcessingServer.Services
             }
         }
 
-        /// <summary>
-        /// Periodic cleanup of old jobs
-        /// </summary>
-        private async Task CleanupLoopAsync(CancellationToken cancellationToken)
-        {
-            while (!cancellationToken.IsCancellationRequested)
-            {
-                try
-                {
-                    // Use configurable cleanup interval
-                    int cleanupIntervalHours = ConfigurationUtility.GetInt(
-                        ConfigurationUtility.CleanupIntervalHoursKey,
-                        ConfigurationUtility.DefaultCleanupIntervalHours);
-                    await Task.Delay(TimeSpan.FromHours(cleanupIntervalHours), cancellationToken).ConfigureAwait(false);
-                    
-                    // Use configurable cleanup age
-                    int cleanupAgeHours = ConfigurationUtility.GetInt(
-                        ConfigurationUtility.JobCleanupAgeHoursKey,
-                        ConfigurationUtility.DefaultJobCleanupAgeHours);
-                    int removed = _jobQueue.CleanupOldJobs(TimeSpan.FromHours(cleanupAgeHours));
-                    if (removed > 0)
-                    {
-                        System.Diagnostics.Trace.WriteLine($"Cleaned up {removed} old jobs");
-                    }
-                }
-                catch (OperationCanceledException)
-                {
-                    break;
-                }
-                catch (Exception ex)
-                {
-                    System.Diagnostics.Trace.WriteLine($"Error in cleanup loop: {ex.Message}");
-                }
-            }
-        }
-
-        /// <summary>
-        /// Graceful shutdown
-        /// </summary>
-        public void Stop(bool immediate)
-        {
-            System.Diagnostics.Trace.WriteLine("AnalysisJobProcessor stopping...");
-            _cancellationTokenSource.Cancel();
-            
-            if (!immediate && _processingTask != null)
-            {
-                try
-                {
-                    _processingTask.Wait(TimeSpan.FromSeconds(30));
-                }
-                catch
-                {
-                    // Ignore
-                }
-            }
-
-            HostingEnvironment.UnregisterObject(this);
-        }
     }
 }

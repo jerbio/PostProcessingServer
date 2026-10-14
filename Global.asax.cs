@@ -21,15 +21,17 @@ namespace PostProcessingServer
             BundleConfig.RegisterBundles(BundleTable.Bundles);
 
             // Start background job processor
-            AnalysisJobProcessor.Instance.Start();
-            System.Diagnostics.Trace.WriteLine("Analysis Job Processor started in Application_Start");
+            BackgroundJobWorker.Instance.Start();
+            TileShareScheduleCleanupWorker.Start();
+            TileShareActivityCleanupWorker.Start();
+            System.Diagnostics.Trace.WriteLine("Shared background job worker started in Application_Start");
         }
 
         protected void Application_End()
         {
             // Stop background job processor gracefully
-            AnalysisJobProcessor.Instance.Stop(immediate: false);
-            System.Diagnostics.Trace.WriteLine("Analysis Job Processor stopped in Application_End");
+            BackgroundJobWorker.Instance.Stop(immediate: false);
+            System.Diagnostics.Trace.WriteLine("Shared background job worker stopped in Application_End");
         }
     }
 }
