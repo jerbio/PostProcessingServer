@@ -1,0 +1,548 @@
+﻿@model PostProcessingServer.Models.TrafficViewModel
+@{
+    //Layout = "_Layout";
+    ViewBag.Title = "Traffic & Funnel Analytics";
+    var vm = Model;
+
+    @functions {
+        // Percentage (0..1 fraction) display. Kept C#5-safe (no interpolation / expression-bodied).
+        static string Pct(double? v)
+        {
+            return v.HasValue ? v.Value.ToString("P1", System.Globalization.CultureInfo.InvariantCulture) : "\u2014";
+        }
+        static string Num(long v)
+        {
+            return v.ToString("N0", System.Globalization.CultureInfo.InvariantCulture);
+        }
+        static int BarWidth(long value, long max)
+        {
+            return max > 0 ? (int)(value * 100.0 / max) : 0;
+        }
+        static int BarWidthPct(double share)
+        {
+            return share > 0 ? (int)(share * 100.0) : 0;
+        }
+        static string ExpLabelClass(bool balanced)
+        {
+            return balanced ? "label-success" : "label-danger";
+        }
+        static string DropOffClass(bool high)
+        {
+            return high ? "text-danger" : "text-muted";
+        }
+        static string Delta(long? v)
+        {
+            if (!v.HasValue) return "\u2014";
+            var s = v.Value.ToString("0", System.Globalization.CultureInfo.InvariantCulture);
+            if (v.Value > 0) s = "+" + s;
+            return s;
+        }
+        static double ShareOf(long users, long top)
+        {
+            return top > 0 ? (double)users / top : 0.0;
+        }
+
+        // Render a JSON array of non-negative integers (no quoting needed, safe inside <script>).
+        static string JsonLongArray(IEnumerable<long> values)
+        {
+            var sb = new System.Text.StringBuilder();
+            sb.Append('[');
+            var first = true;
+            foreach (var v in values)
+            {
+                if (!first) sb.Append(',');
+                sb.Append(v.ToString("0", System.Globalization.CultureInfo.InvariantCulture));
+                first = false;
+            }
+            sb.Append(']');
+            return sb.ToString();
+        }
+
+        // Render a JSON array of "yyyy-MM-dd" bucket labels.
+        static string JsonDateLabels(IEnumerable<DateTime> dates)
+        {
+            var sb = new System.Text.StringBuilder();
+            sb.Append('[');
+            var first = true;
+            foreach (var d in dates)
+            {
+                if (!first) sb.Append(',');
+                sb.Append('\"').Append(d.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture)).Append('\"');
+                first = false;
+            }
+            sb.Append(']');
+            return sb.ToString();
+        }
+    }
+
+    var maxSeries = vm.TimeSeries.Select(s => s.Value).DefaultIfEmpty(0).Max();
+    var maxLanding = vm.Landing.Rows.Select(l => l.Views).DefaultIfEmpty(0).Max();
+    var funnelTop = (vm.Funnel != null && vm.Funnel.Stages != null && vm.Funnel.Stages.Count > 0)
+        ? vm.Funnel.Stages[0].Users : 0L;
+}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-md-12">
+            <div class="page-header">
+                <h1>Traffic &amp; Funnel Analytics</h1>
+                <p class="text-muted">
+                    Distinct identities · window
+                    <strong>@vm.FromUtc.ToString("yyyy-MM-dd")</strong> to
+                    <strong>@vm.ToUtc.ToString("yyyy-MM-dd")</strong>.
+                    @if (vm.IncludeTestTraffic)
+                    {
+                        <span class="label label-warning">test data INCLUDED</span>
+                    }
+                    else
+                    {
+                        <span class="label label-default">test data excluded</span>
+                    }
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-md-12">
+            <form method="get" action="/Traffic" class="form-inline">
+                <div class="form-group">
+                    <label>From</label>
+                    <input type="date" name="from" value="@vm.FromUtc.ToString("yyyy-MM-dd")" class="form-control" />
+                </div>
+                <div class="form-group">
+                    <label>To</label>
+                    <input type="date" name="to" value="@vm.ToUtc.ToString("yyyy-MM-dd")" class="form-control" />
+                </div>
+                <div class="form-group">
+                    <label>Granularity</label>
+                    <select name="granularity" class="form-control">
+                        <option value="day" @(vm.Granularity == "day" ? "selected" : "")>Daily</option>
+                        <option value="week" @(vm.Granularity == "week" ? "selected" : "")>Weekly</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Dimension</label>
+                    <select name="dimension" class="form-control">
+                        <option value="channel" @(vm.Dimension == "channel" ? "selected" : "")>Channel</option>
+                        <option value="campaign" @(vm.Dimension == "campaign" ? "selected" : "")>Campaign</option>
+                        <option value="source" @(vm.Dimension == "source" ? "selected" : "")>Source</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" name="includeTest" value="1" @(vm.IncludeTestTraffic ? "checked" : "") />
+                        Include test data
+                    </label>
+                </div>
+                <button type="submit" class="btn btn-primary">Apply</button>
+                <a href="/Traffic" class="btn btn-default">Reset</a>
+            </form>
+        </div>
+    </div>
+
+    <div class="row" style="margin-top: 20px;">
+        <div class="col-md-3">
+            <div class="panel panel-primary"><div class="panel-body">
+                <div class="text-right"><span class="h3">@Num(vm.Overview.TotalEvents)</span><div class="text-muted">Total events</div></div>
+            </div></div>
+        </div>
+        <div class="col-md-3">
+            <div class="panel panel-default"><div class="panel-body">
+                <div class="text-right"><span class="h3">@Num(vm.Overview.UniqueAnonymous)</span><div class="text-muted">Unique anonymous</div></div>
+            </div></div>
+        </div>
+        <div class="col-md-3">
+            <div class="panel panel-success"><div class="panel-body">
+                <div class="text-right">
+                    <span class="h3">@Num(vm.Overview.ResolvedToUser)</span>
+                    <div class="text-muted">Resolved to user · @Pct(vm.Overview.ResolutionRate)</div>
+                </div>
+            </div></div>
+        </div>
+        <div class="col-md-3">
+            <div class="panel panel-info"><div class="panel-body">
+                <div class="text-right">
+                    <span class="h3">@Pct(vm.Overview.ReferralShare)</span>
+                    <div class="text-muted">Referral share</div>
+                </div>
+            </div></div>
+        </div>
+    </div>
+<div class="row">
+        <div class="col-md-12">
+            <div class="panel panel-default">
+                <div class="panel-heading">Traffic vs. registered users over time (@vm.Granularity)</div>
+                <div class="panel-body">
+                    @if (vm.TimeSeries.Count == 0)
+                    {
+                        <p class="text-muted">No events in this window.</p>
+                    }
+                    else
+                    {
+                        <div style="position: relative; height: 320px; margin-bottom: 12px;">
+                            <canvas id="trafficChart"></canvas>
+                            <p class="text-muted text-center" id="trafficChartFallback" style="display:none; margin:0;">
+                                Chart unavailable (Chart.js could not be loaded). The table below is authoritative.
+                            </p>
+                        </div>
+                        <table class="table table-condensed">
+                            <thead>
+                                <tr>
+                                    <th style="width:110px;">Bucket</th>
+                                    <th>Traffic events</th>
+                                    <th style="width:130px; text-align:right;">Registered users</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                            @foreach (var s in vm.TimeSeries)
+                            {
+                                <tr>
+                                    <td style="width:110px;">@s.BucketUtc.ToString("yyyy-MM-dd")</td>
+                                    <td>
+                                        <div class="progress" style="margin-bottom: 0;">
+                                            <div class="progress-bar progress-bar-info" style="width:@BarWidth(s.Value, maxSeries)%;"></div>
+                                        </div>
+                                    </td>
+                                    <td style="width:130px; text-align:right;">@Num(s.RegisteredUsers)</td>
+                                </tr>
+                            }
+                            </tbody>
+                        </table>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-md-12">
+            <div class="panel panel-default">
+                <div class="panel-heading">Conversion funnel — success stage: signup_verified</div>
+                <div class="panel-body">
+                    @if (vm.Funnel.Stages.Count == 0)
+                    {
+                        <p class="text-muted">No funnel data in this window.</p>
+                    }
+                    else
+                    {
+                        <div>
+                        @foreach (var f in vm.Funnel.Stages)
+                        {
+                            <div class="row" style="margin-bottom:6px;">
+                                <div class="col-md-2 text-right" style="padding-top:3px;">@f.Label</div>
+                                <div class="col-md-7">
+                                    <div class="progress" style="margin-bottom:0;">
+                                        <div class="progress-bar progress-bar-success" style="width:@BarWidthPct(ShareOf(f.Users, funnelTop))%;">@Num(f.Users)</div>
+                                    </div>
+                                </div>
+                                <div class="col-md-3" style="padding-top:3px;">
+                                    <span class="text-muted">share @Pct(ShareOf(f.Users, funnelTop)) ·</span>
+                                    <span class="@(DropOffClass(f.DropFromPrevious.HasValue && f.DropFromPrevious.Value > 0.5))"> drop-off @Pct(f.DropFromPrevious)</span>
+                                </div>
+                            </div>
+                        }
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="row">
+        <div class="col-md-12">
+            <div class="panel panel-default">
+                <div class="panel-heading">Landing paths — top @vm.Landing.Rows.Count</div>
+                <div class="panel-body">
+                    @if (vm.Landing.Rows.Count == 0)
+                    {
+                        <p class="text-muted">No landing data in this window.</p>
+                    }
+                    else
+                    {
+                        <table class="table table-condensed table-striped">
+                            <thead><tr><th>Path</th><th>Views</th><th>Clicks</th><th>CTR</th></tr></thead>
+                            <tbody>
+                            @foreach (var l in vm.Landing.Rows)
+                            {
+                                <tr>
+                                    <td>@l.Path</td>
+                                    <td class="text-right">@Num(l.Views)
+                                        <div class="progress" style="margin:2px auto 0; max-width:120px; height:6px;"><div class="progress-bar" style="width:@BarWidth(l.Views, maxLanding)%;"></div></div>
+                                    </td>
+                                    <td class="text-right">@Num(l.Clicks)</td>
+                                    <td class="text-right">@Pct(l.Ctr)</td>
+                                </tr>
+                            }
+                            </tbody>
+                            <tfoot>
+                                <tr>
+                                    <td><strong>Total</strong></td>
+                                    <td class="text-right"><strong>@Num(vm.Landing.TotalViews)</strong></td>
+                                    <td class="text-right"><strong>@Num(vm.Landing.TotalClicks)</strong></td>
+                                    <td class="text-right"><strong>@Pct(vm.Landing.TotalCtr)</strong></td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+<div class="row">
+        <div class="col-md-12">
+            <div class="panel panel-default">
+                <div class="panel-heading">Conversions by stage</div>
+                <div class="panel-body">
+                    @if (vm.Conversion.Rows.Count == 0)
+                    {
+                        <p class="text-muted">No conversion data in this window.</p>
+                    }
+                    else
+                    {
+                        <table class="table table-condensed table-striped">
+                            <thead><tr><th>Stage</th><th>Users</th></tr></thead>
+                            <tbody>
+                            @foreach (var c in vm.Conversion.Rows)
+                            {
+                                <tr>
+                                    <td>@c.Stage</td>
+                                    <td class="text-right">@Num(c.Users)</td>
+                                </tr>
+                            }
+                            </tbody>
+                        </table>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="row">
+        <div class="col-md-12">
+            <div class="panel panel-default">
+                <div class="panel-heading">Experiments &amp; SRM</div>
+                <div class="panel-body">
+                    @if (vm.Experiments.Count == 0)
+                    {
+                        <p class="text-muted">No experiment data in this window.</p>
+                    }
+                    else
+                    {
+                        <div>
+                        @foreach (var e in vm.Experiments)
+                        {
+                            <div style="margin-bottom: 16px;">
+                                <div>
+                                    <strong>@e.Name</strong>
+                                    <small class="text-muted">(@e.Key)</small>
+                                    @if (e.PValue.HasValue)
+                                    {
+                                        <span class="label @(ExpLabelClass(e.IsBalanced))">
+                                            @if (e.IsBalanced) { <text>balanced</text> } else { <text>SRM warning</text> }
+                                        </span>
+                                    }
+                                </div>
+                                <table class="table table-condensed" style="margin-bottom:0;">
+                                    <thead><tr><th>Arm</th><th>Users</th><th>Share</th><th>CTR count</th><th>CTR</th></tr></thead>
+                                    <tbody>
+                                    @foreach (var a in e.Arms)
+                                    {
+                                        <tr>
+                                            <td>@a.Arm</td>
+                                            <td class="text-right">@Num(a.Users)</td>
+                                            <td class="text-right">@Pct(a.Share)</td>
+                                            <td class="text-right">@Num(a.CtrCount)</td>
+                                            <td class="text-right">@Pct(a.Ctr)</td>
+                                        </tr>
+                                    }
+                                    </tbody>
+                                </table>
+                                @if (e.PValue.HasValue)
+                                {
+                                    <small class="text-muted">chi2=@e.ChiSquare.Value.ToString("F2") · p=@e.PValue.Value.ToString("F4") · total @Num(e.TotalUsers)</small>
+                                }
+                            </div>
+                        }
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+<div class="row">
+        <div class="col-md-12">
+            <div class="panel panel-default">
+                <div class="panel-heading">Referrer hosts</div>
+                <div class="panel-body">
+                    @if (vm.Referrers.Count == 0)
+                    {
+                        <p class="text-muted">No referral data in this window.</p>
+                    }
+                    else
+                    {
+                        <table class="table table-condensed table-striped">
+                            <thead><tr><th>Host</th><th>Views</th><th>Clicks</th><th>CTR</th><th>Conversions</th><th>Conv rate</th><th>Wilson lower</th><th>Wilson upper</th></tr></thead>
+                            <tbody>
+                            @foreach (var r in vm.Referrers)
+                            {
+                                <tr>
+                                    <td>@r.Name</td>
+                                    <td class="text-right">@Num(r.Views)</td>
+                                    <td class="text-right">@Num(r.Clicks)</td>
+                                    <td class="text-right">@Pct(r.ClickRate)</td>
+                                    <td class="text-right">@Num(r.Conversions)</td>
+                                    <td class="text-right">@Pct(r.ConversionRate)</td>
+                                    <td class="text-right">@Pct(r.WilsonLower)</td>
+                                    <td class="text-right">@Pct(r.WilsonUpper)</td>
+                                </tr>
+                            }
+                            </tbody>
+                        </table>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="row">
+        <div class="col-md-12">
+            <div class="panel panel-default">
+                <div class="panel-heading">Device class</div>
+                <div class="panel-body">
+                    <table class="table table-condensed">
+                        <tbody>
+                        @foreach (var d in vm.Devices)
+                        {
+                            <tr>
+                                <td style="width:110px;">@d.DeviceClass</td>
+                                <td>
+                                    <div class="progress" style="margin-bottom:0;">
+                                        <div class="progress-bar progress-bar-default" style="width:@BarWidthPct(d.Share)%;">@Num(d.Users)</div>
+                                    </div>
+                                </td>
+                                <td style="width:70px; text-align:right;">@Pct(d.Share)</td>
+                            </tr>
+                        }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-md-12">
+            <div class="panel panel-default">
+                <div class="panel-heading">Signup reconciliation</div>
+                <div class="panel-body">
+                    @if (vm.SignupReconciliation != null)
+                    {
+                        var rec = vm.SignupReconciliation;
+                        var status = !rec.WithinTolerance.HasValue
+                            ? new { text = "no signups in window", cls = "label-default" }
+                            : (rec.WithinTolerance.Value
+                                ? new { text = "matched (\u00b12%)", cls = "label-success" }
+                                : new { text = "MISMATCH (\u00b12% exceeded)", cls = "label-danger" });
+                        <p class="text-muted" style="margin-top:0;">
+                            Cross-checks this dashboard's own <code>signup_verified</code> count against the
+                            <code>AspNetUsers</code> created in the same window (the SignupTracker numbers).
+                        </p>
+                        <table class="table table-condensed table-striped">
+                            <thead>
+                                <tr>
+                                    <th>Signup verified (this dashboard)</th>
+                                    <th>Registered users created (SignupTracker)</th>
+                                    <th>Anonymous users created</th>
+                                    <th>Delta</th>
+                                    <th>Relative diff</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td class="text-right">@Num(rec.SignupVerifiedIdentities)</td>
+                                    <td class="text-right">@Num(rec.RegisteredCreatedInWindow)</td>
+                                    <td class="text-right">@Num(rec.AnonymousCreatedInWindow)</td>
+                                    <td class="text-right">@Delta(rec.Delta)</td>
+                                    <td class="text-right">@Pct(rec.RelativeDifference)</td>
+                                    <td><span class="label @status.cls">@status.text</span></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-md-12">
+            <div class="alert alert-info">
+                <strong>Assumptions &amp; method:</strong>
+                <ul style="margin-bottom:0;">
+                    <li>Distinct identity = <code>anonymousId</code> when present, else <code>uid:{UserId}</code>; all user counts are distinct identities, not row counts.</li>
+                    <li>"Success" stage = <code>signup_verified</code>. Funnel drop-off is measured against the previous stage.</li>
+                    <li>Time-series bars are raw event counts (not deduped) — use the funnel/overview for unique-user numbers.</li>
+                    <li>SRM assumes an equal arm split; chi-square uses 1 degree of freedom.</li>
+                    <li>Per-arm CTR = distinct assigned users who clicked a CTA &divide; the arm's <code>Users</code>.</li>
+                    <li>Signup reconciliation: registered = non-anonymous, non-deleted <code>TilerUser</code> rows with <code>CreationTime_DB</code> in the window (SignupTracker's "registered" card); anonymous rows are shown for context but never counted as signups. Mismatch &ge; &plusmn;2% relative difference is flagged.</li>
+                    @if (!vm.IncludeTestTraffic)
+                    {
+                        <li>Test rows (configured excluded-id prefixes and internal identities) are excluded.</li>
+                    }
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section scripts {
+    <!-- Pinned Chart.js 4 build, loaded only on the analytics page (design R11).
+         The per-bucket table above remains authoritative; this is a visual aid. -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script>
+        (function () {
+            if (typeof Chart === 'undefined') {
+                var fb = document.getElementById('trafficChartFallback');
+                if (fb) fb.style.display = 'block';
+                return;
+            }
+            var canvas = document.getElementById('trafficChart');
+            if (!canvas) return;
+            new Chart(canvas, {
+                type: 'line',
+                data: {
+                    labels: @Html.Raw(JsonDateLabels(vm.TimeSeries.Select(s => s.BucketUtc))),
+                    datasets: [
+                        {
+                            label: 'Traffic events',
+                            data: @Html.Raw(JsonLongArray(vm.TimeSeries.Select(s => s.Value))),
+                            borderColor: '#337ab7',
+                            backgroundColor: 'rgba(51, 122, 183, 0.15)',
+                            borderWidth: 2,
+                            tension: 0.2,
+                            fill: true
+                        },
+                        {
+                            label: 'Registered users',
+                            data: @Html.Raw(JsonLongArray(vm.TimeSeries.Select(s => s.RegisteredUsers))),
+                            borderColor: '#5cb85c',
+                            backgroundColor: 'rgba(92, 184, 92, 0.15)',
+                            borderWidth: 2,
+                            tension: 0.2,
+                            fill: true
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false },
+                    scales: {
+                        y: { beginAtZero: true, ticks: { precision: 0 } }
+                    },
+                    plugins: {
+                        legend: { position: 'top' }
+                    }
+                }
+            });
+        })();
+    </script>
+}

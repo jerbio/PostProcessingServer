@@ -1,0 +1,320 @@
+﻿@model PostProcessingServer.Models.SignupTrackerViewModel
+@{
+    ViewBag.Title = "Signup Tracker - Chat Audit";
+    var today = DateTime.UtcNow.Date;
+    var todayStr = today.ToString("yyyy-MM-dd");
+    var userTypeRoute = string.IsNullOrEmpty(Model.UserType) ? (string)null : Model.UserType;
+    // Precompute query-string values for the pagination links below.
+    // Single-line anonymous objects (same pattern as the filter form) avoid
+    // the Razor parser quirks around multi-line lambdas inside code blocks.
+    var fromQ = Model.FromDate.HasValue ? Model.FromDate.Value.ToString("yyyy-MM-dd") : (string)null;
+    var toQ = Model.ToDate.HasValue ? Model.ToDate.Value.ToString("yyyy-MM-dd") : (string)null;
+}
+
+<div class="container mt-4">
+    <!-- User Info Bar -->
+    <div class="row mb-2">
+        <div class="col-12 d-flex justify-content-end align-items-center">
+            @if (ViewBag.CurrentUser != null)
+            {
+                <div class="d-flex align-items-center">
+                    <span class="badge bg-secondary me-2">
+                        <i class="bi bi-person-circle"></i> @ViewBag.CurrentUser
+                    </span>
+                    @using (Html.BeginForm("Logout", "ChatAudit", FormMethod.Post, new { @class = "d-inline" }))
+                    {
+                        @Html.AntiForgeryToken()
+                        <button type="submit" class="btn btn-outline-danger btn-sm">
+                            <i class="bi bi-box-arrow-right"></i> Logout
+                        </button>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+
+    <!-- Breadcrumb -->
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item">@Html.ActionLink("Chat Audit", "Index")</li>
+            <li class="breadcrumb-item active" aria-current="page">Signup Tracker</li>
+        </ol>
+    </nav>
+
+    <div class="row mb-4">
+        <div class="col-12">
+            <h2>
+                <i class="bi bi-calendar2-week"></i> Signup Tracker
+                <span class="badge bg-primary align-middle ms-2">@Model.PeriodLabel</span>
+            </h2>
+            <p class="text-muted">Track users who signed up within a time frame.</p>
+        </div>
+    </div>
+
+    @if (TempData["ErrorMessage"] != null)
+    {
+        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+            @TempData["ErrorMessage"]
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+    }
+
+    <!-- Filter Form -->
+    <div class="card mb-4">
+        <div class="card-header bg-primary text-white">
+            <i class="bi bi-funnel"></i> Filter Signups
+        </div>
+        <div class="card-body">
+            @using (Html.BeginForm("SignupTracker", "ChatAudit", FormMethod.Get))
+            {
+                <div class="row g-3 align-items-end">
+                    <div class="col-md-3">
+                        <label class="form-label">Start Date (UTC)</label>
+                        <input type="date" name="from" class="form-control" value="@(Model.FromDate.HasValue ? Model.FromDate.Value.ToString("yyyy-MM-dd") : "")" />
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">End Date (UTC)</label>
+                        <input type="date" name="to" class="form-control" value="@(Model.ToDate.HasValue ? Model.ToDate.Value.ToString("yyyy-MM-dd") : "")" />
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">User Type</label>
+                        <select name="userType" class="form-select">
+                            <option value="">All Users</option>
+                            <option value="anonymous" selected="@(Model.UserType == "anonymous" ? "selected" : null)">Anonymous</option>
+                            <option value="registered" selected="@(Model.UserType == "registered" ? "selected" : null)">Registered</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="d-flex gap-2">
+                            <button type="submit" class="btn btn-primary">
+                                <i class="bi bi-search"></i> Apply
+                            </button>
+                            <a href="@Url.Action("SignupTracker")" class="btn btn-outline-secondary">Reset</a>
+                        </div>
+                    </div>
+                </div>
+                <hr />
+                <div class="d-flex flex-wrap gap-2">
+                    <span class="align-self-center text-muted me-1"><i class="bi bi-lightning"></i> Quick filters:</span>
+                    <a class="btn btn-sm btn-outline-primary" href="@Url.Action("SignupTracker", new { from = today.AddDays(-6).ToString("yyyy-MM-dd"), to = todayStr, userType = userTypeRoute })">
+                        <i class="bi bi-calendar-event"></i> Last 7 Days
+                    </a>
+                    <a class="btn btn-sm btn-outline-primary" href="@Url.Action("SignupTracker", new { from = today.AddDays(-29).ToString("yyyy-MM-dd"), to = todayStr, userType = userTypeRoute })">
+                        <i class="bi bi-calendar-event"></i> Last 30 Days
+                    </a>
+                    <a class="btn btn-sm btn-outline-primary" href="@Url.Action("SignupTracker", new { userType = userTypeRoute })">
+                        <i class="bi bi-calendar2"></i> All Time
+                    </a>
+                </div>
+            }
+        </div>
+    </div>
+    <!-- Summary Stats -->
+    <div class="row g-3 mb-4">
+        <div class="col-md-4">
+            <div class="card text-white bg-primary h-100">
+                <div class="card-body">
+                    <h6 class="card-title"><i class="bi bi-people"></i> Total Signups</h6>
+                    <h2 class="mb-1">@Model.TotalSignups</h2>
+                    <small class="text-white-50">@Model.PeriodLabel</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card text-white bg-secondary h-100">
+                <div class="card-body">
+                    <h6 class="card-title"><i class="bi bi-person-dash"></i> Anonymous Signups</h6>
+                    <h2 class="mb-1">@Model.AnonymousSignups</h2>
+                    <small class="text-white-50">@Model.PeriodLabel</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card text-white bg-success h-100">
+                <div class="card-body">
+                    <h6 class="card-title"><i class="bi bi-person-check"></i> Registered Signups</h6>
+                    <h2 class="mb-1">@Model.RegisteredSignups</h2>
+                    <small class="text-white-50">@Model.PeriodLabel</small>
+                </div>
+            </div>
+        </div>
+    </div>
+    @if (Model.Users == null || Model.Users.Count == 0)
+    {
+        <div class="alert alert-info" role="alert">
+            <i class="bi bi-info-circle"></i> No users signed up in the selected time frame. Try adjusting the filters above.
+        </div>
+    }
+    else
+    {
+        <!-- User Stats -->
+        <div class="row mb-3">
+            <div class="col-12">
+                <div class="d-flex justify-content-between align-items-center">
+                    <span class="text-muted">
+                        Showing @((Model.Pagination.CurrentPage - 1) * Model.Pagination.PageSize + 1) -
+                        @Math.Min(Model.Pagination.CurrentPage * Model.Pagination.PageSize, Model.Pagination.TotalItems)
+                        of @Model.Pagination.TotalItems users
+                    </span>
+                    <span class="badge bg-primary">Page @Model.Pagination.CurrentPage of @Model.Pagination.TotalPages</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- User List -->
+        <div class="row">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header bg-dark text-white">
+                        <i class="bi bi-list-ul"></i> Users Signed Up
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>User</th>
+                                    <th>Email</th>
+                                    <th>Type</th>
+                                    <th>Signed Up (UTC)</th>
+                                    <th>Time Zone</th>
+                                    <th>Country</th>
+                                    <th>Sessions</th>
+                                    <th></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var user in Model.Users)
+                                {
+                                    <tr>
+                                        <td>
+                                            <strong>@(string.IsNullOrEmpty(user.FullName) ? "@" + user.UserName : user.FullName)</strong>
+                                            <div class="small text-muted"><code>@user.UserId</code></div>
+                                        </td>
+                                        <td>
+                                            @if (string.IsNullOrEmpty(user.Email))
+                                            {
+                                                <span class="text-muted">-</span>
+                                            }
+                                            else
+                                            {
+                                                <a href="mailto:@user.Email">@user.Email</a>
+                                            }
+                                        </td>
+                                        <td>
+                                            @if (user.IsAnonymous)
+                                            {
+                                                <span class="badge bg-secondary">Anonymous</span>
+                                            }
+                                            else
+                                            {
+                                                <span class="badge bg-success">Registered</span>
+                                            }
+                                        </td>
+                                        <td>
+                                            @if (user.CreatedAt.HasValue)
+                                            {
+                                                @user.CreatedAt.Value.ToUniversalTime().ToString("MMM d, yyyy HH:mm")
+                                            }
+                                            else
+                                            {
+                                                <span class="text-muted">-</span>
+                                            }
+                                        </td>
+                                        <td>@(string.IsNullOrEmpty(user.TimeZone) ? "-" : user.TimeZone)</td>
+                                        <td>@(string.IsNullOrEmpty(user.CountryCode) ? "-" : user.CountryCode)</td>
+                                        <td><span class="badge bg-info text-dark">@user.SessionCount</span></td>
+                                        <td>
+                                            @if (user.IsAnonymous)
+                                            {
+                                                @Html.ActionLink("View Chats", "Sessions", "ChatAudit", new { id = user.UserId }, new { @class = "btn btn-sm btn-outline-primary" })
+                                            }
+                                            else
+                                            {
+                                                <span class="text-muted small" title="Chat sessions are audited for anonymous users only">N/A</span>
+                                            }
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+        if (Model.Pagination.TotalPages > 1)
+        {
+            <nav class="mt-3">
+                <ul class="pagination justify-content-center">
+                    @if (Model.Pagination.HasPreviousPage)
+                    {
+                        <li class="page-item">
+                            <a class="page-link" href="@Url.Action("SignupTracker", new { from = fromQ, to = toQ, userType = userTypeRoute, page = 1 })">
+                                <i class="bi bi-chevron-double-left"></i>
+                            </a>
+                        </li>
+                        <li class="page-item">
+                            <a class="page-link" href="@Url.Action("SignupTracker", new { from = fromQ, to = toQ, userType = userTypeRoute, page = Model.Pagination.CurrentPage - 1 })">
+                                <i class="bi bi-chevron-left"></i> Previous
+                            </a>
+                        </li>
+                    }
+                    else
+                    {
+                        <li class="page-item disabled">
+                            <span class="page-link"><i class="bi bi-chevron-double-left"></i></span>
+                        </li>
+                        <li class="page-item disabled">
+                            <span class="page-link"><i class="bi bi-chevron-left"></i> Previous</span>
+                        </li>
+                    }
+
+                    @foreach (var pageNum in Model.Pagination.GetPageRange(5))
+                    {
+                        if (pageNum == Model.Pagination.CurrentPage)
+                        {
+                            <li class="page-item active">
+                                <span class="page-link">@pageNum</span>
+                            </li>
+                        }
+                        else
+                        {
+                            <li class="page-item">
+                                <a class="page-link" href="@Url.Action("SignupTracker", new { from = fromQ, to = toQ, userType = userTypeRoute, page = pageNum })">@pageNum</a>
+                            </li>
+                        }
+                    }
+
+                    @if (Model.Pagination.HasNextPage)
+                    {
+                        <li class="page-item">
+                            <a class="page-link" href="@Url.Action("SignupTracker", new { from = fromQ, to = toQ, userType = userTypeRoute, page = Model.Pagination.CurrentPage + 1 })">
+                                Next <i class="bi bi-chevron-right"></i>
+                            </a>
+                        </li>
+                        <li class="page-item">
+                            <a class="page-link" href="@Url.Action("SignupTracker", new { from = fromQ, to = toQ, userType = userTypeRoute, page = Model.Pagination.TotalPages })">
+                                <i class="bi bi-chevron-double-right"></i>
+                            </a>
+                        </li>
+                    }
+                    else
+                    {
+                        <li class="page-item disabled">
+                            <span class="page-link">Next <i class="bi bi-chevron-right"></i></span>
+                        </li>
+                        <li class="page-item disabled">
+                            <span class="page-link"><i class="bi bi-chevron-double-right"></i></span>
+                        </li>
+                    }
+                </ul>
+            </nav>
+        }
+    }
+
+    <!-- Back Button -->
+    <div class="row mt-4">
+        <div class="col-12">
+            @Html.ActionLink("« Back to Chat Audit", "Index", null, new { @class = "btn btn-outline-secondary" })
+        </div>
+    </div>
+</div>

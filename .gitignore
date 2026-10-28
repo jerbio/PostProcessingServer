@@ -179,3 +179,10 @@ FunctionsDebugProfiles/
 # Application Insights
 # ==========================================
 ApplicationInsights.config
+
+# Local credentials for background processing and internal notifications
+/Web.Local.config
+
+# User-scoped calendar synchronization diagnostics
+/App_Data/CalendarSync/
+Migrations/*

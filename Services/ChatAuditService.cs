@@ -292,6 +292,151 @@ namespace PostProcessingServer.Services
         }
 
         /// <summary>
+        /// Gets a paginated list of users who signed up within a time frame.
+        /// </summary>
+        public async Task<SignupTrackerViewModel> GetSignedUpUsersAsync(DateTime? fromDate, DateTime? toDate, string userType, int page = 1, int pageSize = 20)
+        {
+            // Ensure valid pagination parameters
+            page = Math.Max(1, page);
+            pageSize = Math.Max(1, Math.Min(100, pageSize));
+
+            // Convert the date window to UTC epoch milliseconds so the range is
+            // compared directly against the CreationTime_DB column.
+            // fromMs is inclusive, toMs is exclusive (start of the day after `toDate`).
+            long? fromMs = null;
+            if (fromDate.HasValue)
+            {
+                var f = fromDate.Value.Date;
+                fromMs = new DateTimeOffset(f.Year, f.Month, f.Day, 0, 0, 0, TimeSpan.Zero).ToUnixTimeMilliseconds();
+            }
+
+            long? toMs = null;
+            if (toDate.HasValue)
+            {
+                var t = toDate.Value.Date;
+                toMs = new DateTimeOffset(t.Year, t.Month, t.Day, 0, 0, 0, TimeSpan.Zero).ToUnixTimeMilliseconds();
+            }
+
+            // Normalize the user type filter
+            userType = string.IsNullOrWhiteSpace(userType) ? null : userType.Trim().ToLower();
+            if (userType != "anonymous" && userType != "registered")
+            {
+                userType = null;
+            }
+
+            using (var db = new PostProcessorApplicationDbContext())
+            {
+                // Base query: users that have a creation time, are not soft-deleted
+                // and fall inside the requested signup window.
+                var baseQuery = db.Users.Where(u => u.CreationTime_DB != null);
+
+                if (fromMs.HasValue)
+                {
+                    var fromMsValue = fromMs.Value;
+                    baseQuery = baseQuery.Where(u => u.CreationTime_DB >= fromMsValue);
+                }
+
+                if (toMs.HasValue)
+                {
+                    var toMsValue = toMs.Value;
+                    baseQuery = baseQuery.Where(u => u.CreationTime_DB < toMsValue);
+                }
+
+                baseQuery = baseQuery.Where(u => u.IsDeleted_DB == false || u.IsDeleted_DB == null);
+
+                // Summary counts for the stat cards
+                var totalCount = await baseQuery.CountAsync().ConfigureAwait(false);
+                var anonymousCount = await baseQuery
+                    .CountAsync(u => u.IsAnonymous_DB == true)
+                    .ConfigureAwait(false);
+                var registeredCount = await baseQuery
+                    .CountAsync(u => u.IsAnonymous_DB == false || u.IsAnonymous_DB == null)
+                    .ConfigureAwait(false);
+
+                // Apply the user type filter for the table itself
+                var usersQuery = baseQuery;
+                if (userType == "anonymous")
+                {
+                    usersQuery = baseQuery.Where(u => u.IsAnonymous_DB == true);
+                }
+                else if (userType == "registered")
+                {
+                    usersQuery = baseQuery.Where(u => u.IsAnonymous_DB == false || u.IsAnonymous_DB == null);
+                }
+
+                var totalFiltered = await usersQuery.CountAsync().ConfigureAwait(false);
+
+                // Get paginated users with session counts using LEFT JOIN
+                var usersWithCounts = await (
+                    from u in usersQuery
+                    join s in db.VibeSessions on u.Id equals s.TilerUserId into sessions
+                    orderby u.CreationTime_DB descending
+                    select new
+                    {
+                        User = u,
+                        SessionCount = sessions.Count()
+                    })
+                    .Skip((page - 1) * pageSize)
+                    .Take(pageSize)
+                    .ToListAsync()
+                    .ConfigureAwait(false);
+
+                var userViewModels = usersWithCounts.Select(x => new SignupUserViewModel
+                {
+                    UserId = x.User.Id,
+                    UserName = x.User.UserName ?? "",
+                    FullName = x.User.FullName ?? "",
+                    Email = x.User.Email ?? "",
+                    IsAnonymous = x.User.IsAnonymous_DB ?? false,
+                    CreatedAt = x.User.CreationTime_DB.HasValue
+                        ? DateTimeOffset.FromUnixTimeMilliseconds(x.User.CreationTime_DB.Value)
+                        : (DateTimeOffset?)null,
+                    TimeZone = x.User.TimeZone,
+                    CountryCode = x.User.CountryCode,
+                    SessionCount = x.SessionCount
+                }).ToList();
+
+                // Build a human-readable period label
+                string periodLabel;
+                if (fromDate.HasValue && toDate.HasValue)
+                {
+                    periodLabel = string.Format("{0:MMM d, yyyy} – {1:MMM d, yyyy} (UTC)", fromDate.Value.Date, toDate.Value.Date);
+                }
+                else if (fromDate.HasValue)
+                {
+                    periodLabel = string.Format("From {0:MMM d, yyyy} (UTC)", fromDate.Value.Date);
+                }
+                else if (toDate.HasValue)
+                {
+                    periodLabel = string.Format("Until {0:MMM d, yyyy} (UTC)", toDate.Value.Date);
+                }
+                else
+                {
+                    periodLabel = "All Time";
+                }
+
+                return new SignupTrackerViewModel
+                {
+                    FromDate = fromDate,
+                    ToDate = toDate,
+                    UserType = userType,
+                    Page = page,
+                    Users = userViewModels,
+                    Pagination = new PaginationViewModel
+                    {
+                        CurrentPage = page,
+                        PageSize = pageSize,
+                        TotalItems = totalFiltered
+                    },
+                    TotalSignups = totalCount,
+                    AnonymousSignups = anonymousCount,
+                    RegisteredSignups = registeredCount,
+                    PeriodLabel = periodLabel
+                };
+            }
+        }
+
+        /// <summary>
         /// Helper method to truncate strings for preview
         /// </summary>
         private static string TruncateString(string value, int maxLength)

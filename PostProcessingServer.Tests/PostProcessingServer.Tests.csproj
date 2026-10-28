@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <LangVersion>7.3</LangVersion>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
+    <GenerateBindingRedirectsOutputType>true</GenerateBindingRedirectsOutputType>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Use the production assemblies; never link host implementation sources or another test suite. -->
+    <ProjectReference Include="..\PostProcessingServer.csproj" />
+    <ProjectReference Include="..\..\TilerFront\TilerFront.csproj" />
+    <ProjectReference Include="..\..\..\My24HourTimerWPF\TilerElements\TilerElements.csproj" />
+    <ProjectReference Include="..\..\..\My24HourTimerWPF\ClusterManager\ClusterManager.csproj" />
+    <ProjectReference Include="..\..\..\My24HourTimerWPF\VibeServiceCore\VibeServiceCore.csproj" />
+    <ProjectReference Include="..\..\..\TilerCrossServerResources\TilerCrossServerResources.csproj" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.10.0" />
+    <PackageReference Include="xunit" Version="2.9.0" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="EntityFramework" Version="6.5.1" />
+    <!-- Legacy packages.config project references do not expose IdentityDbContext transitively. -->
+    <PackageReference Include="Microsoft.AspNet.Identity.EntityFramework" Version="2.2.4" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+    <PackageReference Include="System.Collections.Immutable" Version="8.0.0" />
+    <PackageReference Include="System.Runtime.CompilerServices.Unsafe" Version="6.1.2" />
+    <PackageReference Include="Ulid" Version="1.4.1" />
+  </ItemGroup>
+</Project>

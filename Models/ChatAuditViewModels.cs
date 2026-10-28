@@ -64,6 +64,62 @@ namespace PostProcessingServer.Models
     }
 
     /// <summary>
+    /// ViewModel for the Signup Tracker page - users who signed up within a time frame
+    /// </summary>
+    public class SignupTrackerViewModel
+    {
+        /// <summary>Start of the signup window (UTC date)</summary>
+        public DateTime? FromDate { get; set; }
+
+        /// <summary>End of the signup window (UTC date, inclusive)</summary>
+        public DateTime? ToDate { get; set; }
+
+        /// <summary>User type filter: null/empty = all, "anonymous", "registered"</summary>
+        public string UserType { get; set; }
+
+        public int Page { get; set; } = 1;
+
+        public List<SignupUserViewModel> Users { get; set; }
+        public PaginationViewModel Pagination { get; set; }
+
+        /// <summary>Total users who signed up within the selected window</summary>
+        public int TotalSignups { get; set; }
+
+        /// <summary>Anonymous users who signed up within the selected window</summary>
+        public int AnonymousSignups { get; set; }
+
+        /// <summary>Registered users who signed up within the selected window</summary>
+        public int RegisteredSignups { get; set; }
+
+        /// <summary>Human-readable label for the selected window</summary>
+        public string PeriodLabel { get; set; } = "All Time";
+
+        public string ErrorMessage { get; set; }
+
+        public SignupTrackerViewModel()
+        {
+            Users = new List<SignupUserViewModel>();
+            Pagination = new PaginationViewModel();
+        }
+    }
+
+    /// <summary>
+    /// ViewModel for a single user row in the Signup Tracker table
+    /// </summary>
+    public class SignupUserViewModel
+    {
+        public string UserId { get; set; }
+        public string UserName { get; set; }
+        public string FullName { get; set; }
+        public string Email { get; set; }
+        public bool IsAnonymous { get; set; }
+        public DateTimeOffset? CreatedAt { get; set; }
+        public string TimeZone { get; set; }
+        public string CountryCode { get; set; }
+        public int SessionCount { get; set; }
+    }
+
+    /// <summary>
     /// ViewModel for paginated list of chat sessions
     /// </summary>
     public class ChatSessionListViewModel

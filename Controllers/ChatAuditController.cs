@@ -123,6 +123,26 @@ namespace PostProcessingServer.Controllers
         }
 
         /// <summary>
+        /// GET: /ChatAudit/SignupTracker
+        /// Displays the Signup Tracker dashboard - users who signed up within a time frame
+        /// </summary>
+        public async Task<ActionResult> SignupTracker(DateTime? from, DateTime? to, string userType = null, int page = 1)
+        {
+            ViewBag.CurrentUser = ChatAuditAuthorizeAttribute.GetCurrentUsername(HttpContext);
+            try
+            {
+                var signupViewModel = await _chatAuditService.GetSignedUpUsersAsync(from, to, userType, page);
+                return View(signupViewModel);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Trace.TraceError($"Error loading signup tracker: {ex.Message}");
+                TempData["ErrorMessage"] = "An error occurred while loading signup data.";
+                return RedirectToAction("Index");
+            }
+        }
+
+        /// <summary>
         /// POST: /ChatAudit/Search
         /// Searches for an anonymous user by ID
         /// </summary>

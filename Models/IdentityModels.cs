@@ -1,4 +1,4 @@
-using System.ComponentModel.DataAnnotations.Schema;
+﻿using System.ComponentModel.DataAnnotations.Schema;
 using System.Data.Entity;
 using System.Data.Entity.Infrastructure.Annotations;
 using System.Security.Claims;
@@ -51,6 +51,11 @@ namespace PostProcessingServer.Models
         public virtual DbSet<FeatureFlagAuditLog> FeatureFlagAuditLogs { get; set; }
         public virtual DbSet<Permission> Permissions { get; set; }
         public virtual DbSet<RolePermission> RolePermissions { get; set; }
+        public DbSet<ReferralSourceCounter> ReferralSourceCounter { get; set; }
+        public DbSet<ReferralRedirect> ReferralRedirects { get; set; }
+        public DbSet<ConversionEventRecord> ConversionEvents { get; set; }
+        public DbSet<ConversionIdentityAlias> ConversionIdentityAliases { get; set; }
+        public DbSet<ExperimentAssignment> ExperimentAssignments { get; set; }
         public DbSet<TileShareScheduleRequest> TileShareScheduleRequests { get; set; }
 
         protected override void OnModelCreating(DbModelBuilder modelBuilder)

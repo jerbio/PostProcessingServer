@@ -143,7 +143,7 @@ namespace PostProcessingServer.Utilities
         /// <summary>
         /// Default job poll interval in milliseconds
         /// </summary>
-        public const int DefaultJobPollIntervalMs = 1000;
+        public const int DefaultJobPollIntervalMs = 60000;
 
         /// <summary>
         /// Default maximum job retries
